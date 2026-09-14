@@ -228,10 +228,28 @@ body {
   height: 100%;
 }
 
+/*
+ * Two months side by side: each month becomes a card of its own, and the strip of page
+ * background between them is what separates them. The outer card steps aside so the gap shows.
+ */
+.calendar-area.split {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  /* Otherwise the month cards' own shadows get clipped at the edges. */
+  overflow: visible;
+}
+
 .month-pane {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
 .month-pane-title {

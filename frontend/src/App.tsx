@@ -135,7 +135,7 @@ export default function App() {
 
       {notice && <div className="notice">{notice}</div>}
 
-      <main className="calendar-area">
+      <main className={view === 'twoMonths' ? 'calendar-area split' : 'calendar-area'}>
         {view === 'twoMonths' ? (
           <div className="two-months">
             {[0, 1].map((offset) => {

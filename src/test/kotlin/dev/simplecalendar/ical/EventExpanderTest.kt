@@ -95,6 +95,27 @@ class EventExpanderTest {
     }
 
     @Test
+    fun `a Jerusalem event keeps its wall-clock time across Israel's DST change`() {
+        // The household's own zone. Israel leaves summer time on the last Sunday of October —
+        // 25 Oct 2026 — under rules that changed in 2013, which makes it exactly the kind of zone
+        // where a stale bundled tz table would surface. The offsets below are the JDK's.
+        assertEquals(
+            listOf(
+                "2026-10-23T09:00+03:00..2026-10-23T10:00+03:00 | Садик",
+                "2026-10-24T09:00+03:00..2026-10-24T10:00+03:00 | Садик",
+                "2026-10-25T09:00+02:00..2026-10-25T10:00+02:00 | Садик",
+                "2026-10-26T09:00+02:00..2026-10-26T10:00+02:00 | Садик",
+            ),
+            expand(
+                "dst-daily-jerusalem.ics",
+                "2026-10-20T00:00:00Z",
+                "2026-11-01T00:00:00Z",
+                renderIn = ZoneId.of("Asia/Jerusalem"),
+            ),
+        )
+    }
+
+    @Test
     fun `recurring multi-day event is found from its middle day`() {
         // Requires widening the recurrence query backwards by the event's own length.
         assertEquals(

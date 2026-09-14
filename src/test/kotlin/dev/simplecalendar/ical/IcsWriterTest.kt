@@ -85,6 +85,36 @@ class IcsWriterTest {
     }
 
     @Test
+    fun `in a household with summer time a new event reads back at the wall-clock time it was set`() {
+        // Asia/Jerusalem has DST. A 09:00 event before the switch and one after it are written
+        // with UTC spellings an hour apart, and both must still come back as 09:00 local.
+        val jerusalem = ZoneId.of("Asia/Jerusalem")
+        val household = EventExpander(jerusalem)
+
+        fun roundTrip(day: Int): Pair<String, ZonedDateTime> {
+            val start = ZonedDateTime.of(2026, 10, day, 9, 0, 0, 0, jerusalem)
+            val ics = IcsWriter.create("dst-$day@simplecalendar", draft(EventTime.Timed(start, start.plusHours(1))))
+            val occurrence = household.expand(
+                IcsParser.parse(ics).single(),
+                calendarId = "cal",
+                href = "/e.ics",
+                from = Instant.parse("2026-10-01T00:00:00Z"),
+                to = Instant.parse("2026-11-01T00:00:00Z"),
+            ).single()
+            return ics.lines().first { it.startsWith("DTSTART") } to (occurrence.time as EventTime.Timed).start
+        }
+
+        val (summerLine, summer) = roundTrip(20)
+        val (winterLine, winter) = roundTrip(26)
+
+        assertEquals("DTSTART:20261020T060000Z", summerLine, "20 Oct is still summer time, UTC+3")
+        assertEquals("DTSTART:20261026T070000Z", winterLine, "26 Oct is winter time, UTC+2")
+        assertEquals("09:00", summer.toLocalTime().toString())
+        assertEquals("09:00", winter.toLocalTime().toString())
+        assertEquals(jerusalem, winter.zone)
+    }
+
+    @Test
     fun `a new all-day event stays date-only`() {
         val ics = IcsWriter.create(
             uid = "allday@simplecalendar",
