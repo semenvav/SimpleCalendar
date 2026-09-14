@@ -1,0 +1,499 @@
+/*
+ * One stylesheet, plain CSS, every colour and size behind a custom property at the top.
+ *
+ * No Tailwind on purpose: the look is the thing the family will have opinions about, and a
+ * single readable file is far easier to sit down and tweak than utility classes scattered
+ * through the components.
+ */
+
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --border: #e2e5ea;
+  --text: #16181d;
+  --text-muted: #6b7280;
+  --accent: #2563eb;
+  --today: #eff4ff;
+  --danger: #b42318;
+  --danger-bg: #fef3f2;
+
+  --radius: 12px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 12px rgb(16 24 40 / 6%);
+
+  /* Bumped for a screen you read from across the kitchen. */
+  --font-base: 16px;
+  --font-title: 26px;
+  --touch: 48px;
+
+  /* Event Calendar honours these. */
+  --ec-border-color: var(--border);
+  --ec-bg-color: var(--surface);
+  --ec-text-color: var(--text);
+  --ec-accent-color: var(--accent);
+  --ec-today-bg-color: var(--today);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: var(--font-base);
+  /* A wall display should never bounce or rubber-band under a stray touch. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  gap: 12px;
+}
+
+/* --- Toolbar ---------------------------------------------------------------------------- */
+
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.toolbar-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--font-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-group,
+.view-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-button,
+.view-button {
+  min-height: var(--touch);
+  min-width: var(--touch);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-base);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.nav-button:active,
+.view-button:active {
+  background: var(--bg);
+}
+
+.nav-button[aria-label='Назад'],
+.nav-button[aria-label='Вперёд'] {
+  font-size: 26px;
+  line-height: 1;
+  padding: 0;
+}
+
+.view-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.nav-button.refresh {
+  font-size: 22px;
+  padding: 0;
+}
+
+.nav-button.refresh:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.nav-button.spinning {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Calendar legend -------------------------------------------------------------------- */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.legend-chip.off {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--chip-color, var(--accent));
+  flex: 0 0 auto;
+}
+
+.legend-chip.off .legend-dot {
+  background: transparent;
+  border: 2px solid var(--chip-color, var(--accent));
+}
+
+/* --- Notice ----------------------------------------------------------------------------- */
+
+.notice {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  border: 1px solid #fecdca;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 15px;
+}
+
+/* --- Calendar area ---------------------------------------------------------------------- */
+
+.calendar-area {
+  flex: 1;
+  /* Without this a flex child refuses to shrink and the calendar overflows the viewport. */
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px;
+  overflow: hidden;
+}
+
+.calendar-host {
+  height: 100%;
+}
+
+.two-months {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+}
+
+.month-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.month-pane-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.month-pane .calendar-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* One column below the width where two months stop being readable. */
+@media (max-width: 900px) {
+  .two-months {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .toolbar-row {
+    flex-wrap: wrap;
+  }
+
+  .toolbar-title {
+    order: -1;
+    width: 100%;
+  }
+}
+
+/* --- Event details ---------------------------------------------------------------------- */
+
+.details-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(16 24 40 / 45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 10;
+}
+
+.details {
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(16 24 40 / 22%);
+}
+
+.details-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.details-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.details-close {
+  min-height: 40px;
+  min-width: 40px;
+  border: none;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 22%);
+  color: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.details-body {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 18px;
+  margin: 0;
+  padding: 20px;
+}
+
+.details-body dt {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.details-body dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.details-description {
+  display: block;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.details-note {
+  margin: 0;
+  padding: 0 20px 12px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* --- Event form ------------------------------------------------------------------------- */
+
+.event-form {
+  width: min(560px, 100%);
+}
+
+.form-header {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.form-header .details-close {
+  background: var(--bg);
+}
+
+.form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.field > span {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.field input,
+.field select,
+.field textarea {
+  min-height: var(--touch);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-base);
+  font-family: inherit;
+}
+
+.field textarea {
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.field select:disabled {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch);
+}
+
+.field-inline input[type='checkbox'] {
+  /* Big enough to hit reliably with a fingertip. */
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  accent-color: var(--accent);
+}
+
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.field-time {
+  flex: 0 0 140px;
+}
+
+.form-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 15px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.form-actions-spacer {
+  flex: 1;
+}
+
+.button {
+  min-height: var(--touch);
+  padding: 0 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-base);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.button.danger {
+  border-color: #fecdca;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+@media (max-width: 560px) {
+  .field-row {
+    flex-wrap: wrap;
+  }
+
+  .field-time {
+    flex: 1 0 100%;
+  }
+}
