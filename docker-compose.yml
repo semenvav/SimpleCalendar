@@ -1,0 +1,44 @@
+# Runs a published image. GitHub Actions builds it and pushes it to GHCR, so the server has
+# nothing to build: choose a tag in .env, then `docker compose pull && docker compose up -d`.
+#
+# Every deployment-specific value comes from .env (see .env.example), so this file is safe to
+# commit to a public repository.
+#
+# Several instances can run side by side — the family's calendar and a test one. Give each its
+# own directory with its own .env and a different COMPOSE_PROJECT_NAME: the project name keeps
+# their containers, data volumes and Traefik routes apart.
+services:
+  app:
+    image: ghcr.io/semenvav/simplecalendar:${SC_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      # --- CalDAV source (Baikal) ---
+      SC_CALDAV_URL: ${SC_CALDAV_URL}
+      SC_CALDAV_USERNAME: ${SC_CALDAV_USERNAME}
+      SC_CALDAV_PASSWORD: ${SC_CALDAV_PASSWORD}
+      # --- Household settings ---
+      SC_TIMEZONE: ${SC_TIMEZONE:-Asia/Jerusalem}
+      SC_SYNC_INTERVAL_SECONDS: ${SC_SYNC_INTERVAL_SECONDS:-60}
+      SC_LOG_LEVEL: ${SC_LOG_LEVEL:-INFO}
+    volumes:
+      # Only a cache plus your calendar names and colours: the events themselves live in Baikal,
+      # so losing this volume costs a resync and the local customisations, nothing more.
+      - data:/data
+    networks:
+      - traefik
+    labels:
+      # Reachable only through Traefik; no ports are published on the host. Router and service
+      # are named after the project so two instances never collide.
+      - "traefik.enable=true"
+      - "traefik.docker.network=${SC_TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`${SC_HOSTNAME:?Set SC_HOSTNAME in .env}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=websecure"
+      - "traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=8080"
+
+volumes:
+  data:
+
+networks:
+  traefik:
+    external: true
+    name: ${SC_TRAEFIK_NETWORK:-traefik}

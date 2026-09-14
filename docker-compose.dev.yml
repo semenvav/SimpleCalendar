@@ -1,0 +1,18 @@
+# Development stack: a throwaway Baikal to develop and test against.
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# Then open http://localhost:8800, finish the one-time Baikal wizard, create a user and a couple
+# of calendars, and point SC_CALDAV_* at http://localhost:8800/dav.php/.
+#
+# State lives in ./.dev and is git-ignored — delete the directory to start over.
+services:
+  baikal:
+    image: ckulka/baikal:nginx
+    container_name: sc-dev-baikal
+    restart: unless-stopped
+    ports:
+      - "8800:80"
+    volumes:
+      - ./.dev/baikal/config:/var/www/baikal/config
+      - ./.dev/baikal/data:/var/www/baikal/Specific

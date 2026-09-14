@@ -41,16 +41,51 @@
 
 ### 2. Запустить
 
+Образ собирает GitHub Actions при каждом push и публикует в `ghcr.io/semenvav/simplecalendar`.
+На сервере ничего не собирается — нужны только `docker-compose.yml` и `.env`:
+
 ```bash
-cp .env.example .env
-# отредактируйте SC_CALDAV_URL, SC_CALDAV_USERNAME, SC_CALDAV_PASSWORD, SC_TIMEZONE
-docker compose up -d --build
+mkdir -p /opt/calendar && cd /opt/calendar
+curl -fsSLO https://raw.githubusercontent.com/semenvav/SimpleCalendar/master/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/semenvav/SimpleCalendar/master/.env.example -o .env
+# отредактируйте .env: хост, адрес и пароль Baikal, тег образа
+docker compose pull && docker compose up -d
 ```
 
-Откройте `http://<сервер>:8080` — или тот хост, что указали в `SC_HOSTNAME`, если маршрутизацию
-делает Traefik. Метки для Traefik уже есть в `docker-compose.yml`.
+Все значения, относящиеся к конкретной установке, — хост, пароль, имя экземпляра — живут только в
+`.env`, который не попадает в репозиторий. `docker-compose.yml` без `SC_HOSTNAME` не запустится.
 
-На планшете просто откройте этот адрес во вкладке браузера. Приложение не делает ничего за
+Обновление — вручную, когда и куда нужно: поменяйте `SC_IMAGE_TAG` в `.env` и повторите
+`docker compose pull && docker compose up -d`.
+
+| Тег | Что это |
+|---|---|
+| `latest` | последняя сборка master |
+| `<ветка>` | последняя сборка ветки — удобно для тестового экземпляра |
+| `sha-1a2b3c4` | ровно один коммит — чтобы семейный экземпляр не менялся без вашего ведома |
+| `0.2.0` | релиз, если запушить тег `v0.2.0` |
+
+Один раз после первой сборки сделайте пакет публичным: на GitHub → Packages → `simplecalendar` →
+Package settings → Change visibility → Public. Новые пакеты в GHCR создаются приватными даже из
+публичного репозитория, и без этого серверу для `pull` понадобится логин.
+
+**Несколько экземпляров.** Семейный и тестовый живут рядом: у каждого своя папка со своим `.env`
+и свой `COMPOSE_PROJECT_NAME`. От имени проекта зависят контейнер, том с данными (`<имя>_data`)
+и маршрут в Traefik, так что экземпляры друг другу не мешают. Тестовому дайте отдельного
+пользователя в Baikal — иначе тестовые правки попадут в семейный календарь.
+
+**Traefik.** Порты на хосте не публикуются: контейнер подключается к внешней Docker-сети Traefik
+(`SC_TRAEFIK_NETWORK`) и доступен только через неё. Имя сети можно подсмотреть у любого сервиса,
+который уже работает за Traefik:
+
+```bash
+docker inspect <контейнер> --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+```
+
+Том с данными хранит только кэш и ваши имена и цвета календарей — сами события в Baikal, так что
+его потеря стоит одной пересинхронизации.
+
+На планшете просто откройте ваш адрес во вкладке браузера. Приложение не делает ничего за
 пределами обычной вкладки: яркостью, сном и пробуждением экрана управляет Android.
 
 ## Разработка
@@ -84,7 +119,7 @@ docker build -t simple-calendar:test .
 docker run --rm --network simplecalendar_default -p 8094:8080 \
   -e SC_CALDAV_URL=http://baikal/dav.php/ \
   -e SC_CALDAV_USERNAME=family -e SC_CALDAV_PASSWORD=... \
-  -e SC_TIMEZONE=Europe/Moscow simple-calendar:test
+  -e SC_TIMEZONE=Asia/Jerusalem simple-calendar:test
 ```
 
 `simplecalendar_default` — сеть, которую создаёт `docker-compose.dev.yml`; внутри неё Baikal
@@ -93,9 +128,12 @@ docker run --rm --network simplecalendar_default -p 8094:8080 \
 ### Тесты
 
 ```bash
-./gradlew test              # 59 тестов: повторения, CalDAV, аутентификация, хранилище, запись
+./gradlew test              # 61 тест: повторения, CalDAV, аутентификация, хранилище, запись
 cd frontend && npm run typecheck
 ```
+
+То же самое GitHub Actions запускает на каждый push (`.github/workflows/ci.yml`); образ
+публикуется, только если тесты прошли. Pull request'ы, в том числе из форков, только тестируются.
 
 Корпус `.ics`-фикстур лежит в `src/test/resources/fixtures/`. Если найдёте событие, которое
 отображается неправильно, — сохраните его `.ics` туда и напишите тест: именно так этот код и
@@ -110,13 +148,17 @@ cd frontend && npm run typecheck
 | `SC_CALDAV_URL` | Корень DAV в Baikal, например `http://baikal/dav.php/`. Можно указать сразу principal или calendar-home — обнаружение спустится от того, что дано |
 | `SC_CALDAV_USERNAME` | Пользователь Baikal |
 | `SC_CALDAV_PASSWORD` | Пароль |
-| `SC_TIMEZONE` | Часовой пояс дома (`Europe/Moscow`). Определяет, что такое «сегодня» и как показывать события без пояса. По умолчанию — системный |
+| `SC_TIMEZONE` | Часовой пояс дома (`Asia/Jerusalem`). Определяет, что такое «сегодня» и как показывать события без пояса. В compose по умолчанию `Asia/Jerusalem`, при локальном запуске — системный |
 | `SC_SYNC_INTERVAL_SECONDS` | Как часто спрашивать Baikal об изменениях (`60`) |
 | `SC_PORT` / `SC_HOST` | Куда слушать (`8080` / `0.0.0.0`) |
 | `SC_DATA_DIR` | Каталог с кэшем SQLite (`/data` в контейнере, `./data` локально) |
 | `SC_STATIC_DIR` | Собранный фронтенд. В контейнере задан; локально не задавайте — UI отдаёт Vite |
 | `SC_DEV_CORS` | Разрешить кросс-доменные запросы с dev-сервера Vite (`false`). В продакшене не включать |
 | `SC_LOG_LEVEL` | `INFO`, поставьте `DEBUG` чтобы видеть тайминги синхронизации и разворачивания |
+| `SC_HOSTNAME` | Только для compose, обязательна: хост, по которому Traefik отдаёт приложение |
+| `SC_TRAEFIK_NETWORK` | Только для compose: внешняя Docker-сеть, к которой подключён Traefik (`traefik`) |
+| `SC_IMAGE_TAG` | Только для compose: какую сборку запускать (`latest`), см. таблицу тегов выше |
+| `COMPOSE_PROJECT_NAME` | Только для compose: имя экземпляра; по умолчанию — имя папки |
 
 Переменные окружения имеют приоритет; файл `.env` в рабочем каталоге заполняет остальное, поэтому
 `./gradlew run` и `docker compose` читают одни и те же настройки.
