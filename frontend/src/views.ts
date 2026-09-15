@@ -21,6 +21,10 @@ export const EC_VIEW: Record<ViewId, string> = {
   list: 'listMonth',
 }
 
+/** Guards a value read back from storage, which may be stale or from an older version. */
+export const isViewId = (value: unknown): value is ViewId =>
+  typeof value === 'string' && Object.hasOwn(EC_VIEW, value)
+
 /**
  * The window to ask the server for.
  *

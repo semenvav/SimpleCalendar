@@ -7,7 +7,8 @@
  */
 
 :root {
-  --bg: #f5f6f8;
+  /* A clear grey, not an off-white: the gaps between cards are made of it and have to read. */
+  --bg: #dde1e7;
   --surface: #ffffff;
   --border: #e2e5ea;
   --text: #16181d;
@@ -49,9 +50,17 @@ body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: var(--font-base);
-  /* A wall display should never bounce or rubber-band under a stray touch. */
-  overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * A wall display should never bounce, rubber-band or pull-to-refresh under a stray swipe.
+ * Chrome takes this from the root element, so it has to be on html as well — on body alone a
+ * downward swipe can still reload the page.
+ */
+html,
+body {
+  overscroll-behavior: none;
 }
 
 .app {

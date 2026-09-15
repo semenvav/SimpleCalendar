@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createEvent,
@@ -17,7 +17,8 @@ import { EventDetails } from './components/EventDetails'
 import { EventForm } from './components/EventForm'
 import { Toolbar } from './components/Toolbar'
 import { addMonths, capitalise, formatMonthYear, parseLocal, toIsoDate } from './lib/dates'
-import { EC_VIEW, rangeFor, step, titleFor, type ViewId } from './views'
+import { recall, remember } from './lib/persist'
+import { EC_VIEW, isViewId, rangeFor, step, titleFor, type ViewId } from './views'
 
 /** Which event the form is working on, and which day a new one should land on. */
 interface Editing {
@@ -25,11 +26,34 @@ interface Editing {
   defaultDate: Date
 }
 
+/** The display format is a preference of the device, so it outlives the tab. */
+const VIEW_KEY = 'simple-calendar.view'
+
+/**
+ * The open period survives only a reload of the same tab — an accidental swipe, say. Opening the
+ * calendar afresh, the next morning for instance, starts at today rather than wherever somebody
+ * left it the day before.
+ */
+const ANCHOR_KEY = 'simple-calendar.anchor'
+
+const initialView = (): ViewId => {
+  const stored = recall('local', VIEW_KEY)
+  return isViewId(stored) ? stored : 'month'
+}
+
+const initialAnchor = (): Date => {
+  const stored = recall('session', ANCHOR_KEY)
+  return stored && /^\d{4}-\d{2}-\d{2}$/.test(stored) ? parseLocal(stored) : new Date()
+}
+
 export default function App() {
   const queryClient = useQueryClient()
 
-  const [view, setView] = useState<ViewId>('month')
-  const [anchor, setAnchor] = useState(() => new Date())
+  const [view, setView] = useState<ViewId>(initialView)
+  const [anchor, setAnchor] = useState(initialAnchor)
+
+  useEffect(() => remember('local', VIEW_KEY, view), [view])
+  useEffect(() => remember('session', ANCHOR_KEY, toIsoDate(anchor)), [anchor])
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set())
   const [selected, setSelected] = useState<EventDetailsData | null>(null)
   const [editing, setEditing] = useState<Editing | null>(null)

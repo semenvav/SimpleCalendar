@@ -3,8 +3,8 @@ import type { CalendarDto } from '../api/types'
 import type { ViewId } from '../views'
 
 const VIEW_LABELS: Array<{ id: ViewId; label: string }> = [
-  { id: 'month', label: 'Месяц' },
   { id: 'twoMonths', label: '2 месяца' },
+  { id: 'month', label: 'Месяц' },
   { id: 'week', label: 'Неделя' },
   { id: 'list', label: 'Список' },
 ]
