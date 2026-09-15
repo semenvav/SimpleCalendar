@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import type { EventDetailsData } from '../calendar/adapter'
 import { addDays, capitalise, formatDayMonth, formatTime, formatWeekday, isSameDay, parseLocal } from '../lib/dates'
 import { describeRepeat } from '../lib/repeat'
+import { useBackdropDismiss } from './useBackdropDismiss'
 
 interface EventDetailsProps {
   event: EventDetailsData
@@ -14,10 +15,11 @@ interface EventDetailsProps {
 export function EventDetails({ event, busy, onEdit, onDelete, onClose }: EventDetailsProps) {
   const source = event.source
   const repeat = describeRepeat(source)
+  const backdrop = useBackdropDismiss(onClose)
 
   return (
-    <div className="details-backdrop" onClick={onClose}>
-      <aside className="details" onClick={(e) => e.stopPropagation()}>
+    <div className="details-backdrop" {...backdrop}>
+      <aside className="details">
         <div className="details-header" style={{ background: event.backgroundColor, color: event.textColor }}>
           <h2>{source.title}</h2>
           <button className="details-close" onClick={onClose} aria-label="Закрыть">

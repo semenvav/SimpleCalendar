@@ -11,6 +11,7 @@ import {
   ruleFor,
   type RepeatChoice,
 } from '../lib/repeat'
+import { useBackdropDismiss } from './useBackdropDismiss'
 
 interface EventFormProps {
   calendars: CalendarDto[]
@@ -40,6 +41,12 @@ interface FormValues {
   repeatUntil: string
 }
 
+/**
+ * Creating and editing an event.
+ *
+ * The header and the buttons stay put and only the fields scroll between them, so Save is always
+ * one tap away however long the form gets — the way phone calendars do it.
+ */
 export function EventForm({
   calendars,
   event,
@@ -55,6 +62,7 @@ export function EventForm({
   const [initial] = useState<FormValues>(() => initialValues(event, defaultDate, writable))
   const [values, setValues] = useState<FormValues>(initial)
   const [problem, setProblem] = useState<string | null>(null)
+  const backdrop = useBackdropDismiss(onClose)
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }))
@@ -76,8 +84,8 @@ export function EventForm({
   const repeating = isPreset(values.repeat)
 
   return (
-    <div className="details-backdrop" onClick={onClose}>
-      <form className="details event-form" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+    <div className="details-backdrop" {...backdrop}>
+      <form className="details event-form" onSubmit={submit}>
         <div className="details-header form-header">
           <h2>{event ? 'Изменить событие' : 'Новое событие'}</h2>
           <button type="button" className="details-close" onClick={onClose} aria-label="Закрыть">
@@ -170,6 +178,27 @@ export function EventForm({
             )}
           </div>
 
+          <label className="field">
+            <span>Место</span>
+            <input
+              type="text"
+              value={values.location}
+              onChange={(e) => set('location', e.target.value)}
+              placeholder="Не обязательно"
+            />
+          </label>
+
+          <label className="field">
+            <span>Описание</span>
+            <textarea
+              value={values.description}
+              onChange={(e) => set('description', e.target.value)}
+              rows={3}
+              placeholder="Не обязательно"
+            />
+          </label>
+
+          {/* Last: a repeating event is made far less often than a one-off one. */}
           <div className="field-row">
             <label className="field">
               <span>Повтор</span>
@@ -199,26 +228,6 @@ export function EventForm({
             )}
           </div>
           {repeating && !values.repeatUntil && <p className="field-hint">Без даты — повторяется без конца.</p>}
-
-          <label className="field">
-            <span>Место</span>
-            <input
-              type="text"
-              value={values.location}
-              onChange={(e) => set('location', e.target.value)}
-              placeholder="Не обязательно"
-            />
-          </label>
-
-          <label className="field">
-            <span>Описание</span>
-            <textarea
-              value={values.description}
-              onChange={(e) => set('description', e.target.value)}
-              rows={3}
-              placeholder="Не обязательно"
-            />
-          </label>
 
           {noCalendars && (
             <p className="form-error">Нет ни одного календаря, доступного для записи.</p>

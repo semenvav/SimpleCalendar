@@ -1,3 +1,5 @@
+import { useBackdropDismiss } from './useBackdropDismiss'
+
 export interface Choice<T extends string> {
   value: T
   label: string
@@ -27,15 +29,14 @@ export function ChoiceDialog<T extends string>({
   onChoose,
   onCancel,
 }: ChoiceDialogProps<T>) {
+  // While the answer is being carried out, a stray tap outside must not take the question away.
+  const backdrop = useBackdropDismiss(() => {
+    if (!busy) onCancel()
+  })
+
   return (
-    <div className="details-backdrop choice-backdrop" onClick={busy ? undefined : onCancel}>
-      <div
-        className="details choice-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="details-backdrop choice-backdrop" {...backdrop}>
+      <div className="details choice-dialog" role="dialog" aria-modal="true" aria-label={title}>
         <div className="details-header form-header">
           <h2>{title}</h2>
         </div>

@@ -100,7 +100,7 @@ body {
   height: 100%;
 }
 
-/* --- Event details ---------------------------------------------------------------------- */
+/* --- Dialogs: the event card, the form, questions ---------------------------------------- */
 
 .details-backdrop {
   position: fixed;
@@ -113,16 +113,23 @@ body {
   z-index: 10;
 }
 
+/*
+ * A column: the header and the buttons keep their place and only the middle scrolls, so the
+ * buttons are always within reach however long the content is.
+ */
 .details {
+  display: flex;
+  flex-direction: column;
   width: min(520px, 100%);
   max-height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: 0 12px 32px rgb(16 24 40 / 22%);
 }
 
 .details-header {
+  flex: 0 0 auto;
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -150,8 +157,12 @@ body {
 }
 
 .details-body {
+  /* The scrolling middle of the event card. */
+  min-height: 0;
+  overflow-y: auto;
   display: grid;
   grid-template-columns: auto 1fr;
+  align-content: start;
   gap: 10px 18px;
   margin: 0;
   padding: 20px;
@@ -176,6 +187,7 @@ body {
 }
 
 .details-note {
+  flex: 0 0 auto;
   margin: 0;
   padding: 0 20px 12px;
   color: var(--text-muted);
@@ -199,6 +211,10 @@ body {
 }
 
 .form-body {
+  /* The scrolling middle of the form. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -218,9 +234,16 @@ body {
   font-size: 14px;
 }
 
+/*
+ * Exactly as wide as their field. Chrome on Android sizes date and time inputs by their content
+ * instead of stretching them: the date came out narrow and the time wider than its column, past
+ * the dialog's edge.
+ */
 .field input,
 .field select,
 .field textarea {
+  width: 100%;
+  min-width: 0;
   min-height: var(--touch);
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -270,7 +293,7 @@ body {
 }
 
 .field-time {
-  flex: 0 0 140px;
+  flex: 0 0 150px;
 }
 
 .field-until {
@@ -293,11 +316,13 @@ body {
 }
 
 .form-actions {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 16px 20px;
   border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .form-actions-spacer {
@@ -346,12 +371,15 @@ body {
 }
 
 .choice-message {
+  flex: 0 0 auto;
   margin: 0;
   padding: 16px 20px 0;
   color: var(--text-muted);
 }
 
 .choice-list {
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -440,6 +468,11 @@ body {
 }
 
 @media (max-width: 560px) {
+  /* On a phone every pixel of width goes to the dialog. */
+  .details-backdrop {
+    padding: 12px;
+  }
+
   .field-row {
     flex-wrap: wrap;
   }

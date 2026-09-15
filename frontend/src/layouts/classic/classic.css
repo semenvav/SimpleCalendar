@@ -198,6 +198,16 @@
     flex-wrap: wrap;
   }
 
+  /*
+   * On a phone the buttons do not fit one row. Left unwrapped they made the page wider than the
+   * screen, and every dialog — sized to the page — ran off its edge. Where they fit, as on the
+   * tablet, nothing moves.
+   */
+  .layout-classic .nav-group,
+  .layout-classic .view-group {
+    flex-wrap: wrap;
+  }
+
   .layout-classic .toolbar-title {
     order: -1;
     width: 100%;

@@ -26,6 +26,31 @@ export interface CalendarViewProps {
 const NO_TOOLBAR = { start: '', center: '', end: '' }
 
 /**
+ * Runs [handler] once the browser's own click for the current tap is over.
+ *
+ * Event Calendar reports a tap on an empty day from `pointerup`, before the `click` the browser
+ * sends for that same tap. On a touch screen that click goes to whatever is under the finger at
+ * the moment it is sent — so a dialog opened straight away caught it: on its backdrop it closed
+ * again at once, on a date field it opened the date picker. A mouse click goes where the button
+ * went down, which is why this never showed up on a computer. The timeout covers a `pointerup`
+ * that no click follows.
+ */
+function afterClick(handler: () => void) {
+  let done = false
+  const run = () => {
+    if (done) return
+    done = true
+    window.removeEventListener('click', onClick, true)
+    window.clearTimeout(fallback)
+    handler()
+  }
+  // Called while that click is still being dispatched; step out of it before opening anything.
+  const onClick = () => window.setTimeout(run, 0)
+  window.addEventListener('click', onClick, true)
+  const fallback = window.setTimeout(run, 500)
+}
+
+/**
  * React wrapper around Event Calendar.
  *
  * Navigation is deliberately *not* delegated to the library: the surrounding app owns the
@@ -63,11 +88,13 @@ export function CalendarView({ view, date, events, onEventClick, onDateClick }: 
       eventTimeFormat: { hour: '2-digit', minute: '2-digit' },
       buttonText: { today: 'Сегодня' },
       noEventsContent: 'Событий нет',
+      // Reported from the click itself, so a card opened here cannot catch it.
       eventClick: (info: Calendar.EventClickInfo) => {
         clickHandler.current?.(info.event.extendedProps as EventDetailsData)
       },
       dateClick: (info: Calendar.DateClickInfo) => {
-        dateHandler.current?.(info.date)
+        const tapped = info.date
+        afterClick(() => dateHandler.current?.(tapped))
       },
     })
 
