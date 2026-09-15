@@ -1,9 +1,13 @@
 /*
- * One stylesheet, plain CSS, every colour and size behind a custom property at the top.
+ * Shared styles, plain CSS, every colour and size behind a custom property at the top.
  *
  * No Tailwind on purpose: the look is the thing the family will have opinions about, and a
  * single readable file is far easier to sit down and tweak than utility classes scattered
  * through the components.
+ *
+ * Only what every layout shares lives here — tokens, the event card, the form, buttons. The
+ * arrangement of the screen belongs to each layout and sits in its own folder, scoped to it
+ * (see layouts/classic/classic.css).
  */
 
 :root {
@@ -63,141 +67,19 @@ body {
   overscroll-behavior: none;
 }
 
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 12px;
-  gap: 12px;
-}
-
-/* --- Toolbar ---------------------------------------------------------------------------- */
-
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex: 0 0 auto;
-}
-
-.toolbar-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.toolbar-title {
-  flex: 1;
-  margin: 0;
-  font-size: var(--font-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.nav-group,
-.view-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.nav-button,
-.view-button {
-  min-height: var(--touch);
-  min-width: var(--touch);
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  font-size: var(--font-base);
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.nav-button:active,
-.view-button:active {
-  background: var(--bg);
-}
-
-.nav-button[aria-label='Назад'],
-.nav-button[aria-label='Вперёд'] {
-  font-size: 26px;
-  line-height: 1;
-  padding: 0;
-}
-
-.view-button.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 600;
-}
-
-.nav-button.refresh {
-  font-size: 22px;
-  padding: 0;
-}
-
-.nav-button.refresh:disabled {
-  color: var(--text-muted);
-  cursor: default;
-}
-
-.nav-button.spinning {
-  animation: spin 900ms linear infinite;
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-/* --- Calendar legend -------------------------------------------------------------------- */
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.legend-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 15px;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.legend-chip.off {
-  color: var(--text-muted);
-  opacity: 0.55;
-}
-
+/* A calendar's colour as a dot — in a layout's legend and on the event card alike. */
 .legend-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: var(--chip-color, var(--accent));
   flex: 0 0 auto;
-}
-
-.legend-chip.off .legend-dot {
-  background: transparent;
-  border: 2px solid var(--chip-color, var(--accent));
 }
 
 /* --- Notice ----------------------------------------------------------------------------- */
@@ -212,83 +94,10 @@ body {
   font-size: 15px;
 }
 
-/* --- Calendar area ---------------------------------------------------------------------- */
-
-.calendar-area {
-  flex: 1;
-  /* Without this a flex child refuses to shrink and the calendar overflows the viewport. */
-  min-height: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 8px;
-  overflow: hidden;
-}
+/* --- Calendar --------------------------------------------------------------------------- */
 
 .calendar-host {
   height: 100%;
-}
-
-.two-months {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  height: 100%;
-}
-
-/*
- * Two months side by side: each month becomes a card of its own, and the strip of page
- * background between them is what separates them. The outer card steps aside so the gap shows.
- */
-.calendar-area.split {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0;
-  /* Otherwise the month cards' own shadows get clipped at the edges. */
-  overflow: visible;
-}
-
-.month-pane {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.month-pane-title {
-  margin: 0 0 8px;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.month-pane .calendar-host {
-  flex: 1;
-  min-height: 0;
-}
-
-/* One column below the width where two months stop being readable. */
-@media (max-width: 900px) {
-  .two-months {
-    grid-template-columns: 1fr;
-    overflow-y: auto;
-  }
-
-  .toolbar-row {
-    flex-wrap: wrap;
-  }
-
-  .toolbar-title {
-    order: -1;
-    width: 100%;
-  }
 }
 
 /* --- Event details ---------------------------------------------------------------------- */
@@ -464,6 +273,16 @@ body {
   flex: 0 0 140px;
 }
 
+.field-until {
+  flex: 0 0 190px;
+}
+
+.field-hint {
+  margin: -6px 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 .form-error {
   margin: 0;
   padding: 10px 14px;
@@ -515,12 +334,118 @@ body {
   color: var(--danger);
 }
 
+/* --- Questions: which part of a series, whether to delete -------------------------------- */
+
+/* Over the form it interrupts. */
+.choice-backdrop {
+  z-index: 20;
+}
+
+.choice-dialog {
+  width: min(440px, 100%);
+}
+
+.choice-message {
+  margin: 0;
+  padding: 16px 20px 0;
+  color: var(--text-muted);
+}
+
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px 20px;
+}
+
+.choice-button {
+  width: 100%;
+  min-height: 56px;
+  font-size: 17px;
+}
+
+.choice-hint {
+  margin: 6px 2px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* --- Layout picker ---------------------------------------------------------------------- */
+
+.layout-picker {
+  position: relative;
+}
+
+/* Used only when a layout does not dress the button as one of its own. */
+.layout-picker-button {
+  min-height: var(--touch);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-base);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.layout-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.layout-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 31;
+  width: min(320px, 90vw);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(16 24 40 / 22%);
+}
+
+.layout-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.layout-picker-item.current {
+  background: var(--today);
+}
+
+.layout-picker-name {
+  font-weight: 600;
+}
+
+.layout-picker-description {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 @media (max-width: 560px) {
   .field-row {
     flex-wrap: wrap;
   }
 
-  .field-time {
+  .field-time,
+  .field-until {
     flex: 1 0 100%;
   }
 }

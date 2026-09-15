@@ -2,13 +2,15 @@ package dev.simplecalendar.service
 
 import dev.simplecalendar.caldav.CalDavClient
 import dev.simplecalendar.config.CalDavConfig
+import dev.simplecalendar.ical.EditScope
 import dev.simplecalendar.ical.EventDraft
 import dev.simplecalendar.ical.EventExpander
 import dev.simplecalendar.model.EventTime
+import dev.simplecalendar.model.Frequency
+import dev.simplecalendar.model.RepeatRule
 import dev.simplecalendar.plugins.ConflictException
 import dev.simplecalendar.plugins.ForbiddenException
 import dev.simplecalendar.plugins.NotFoundException
-import dev.simplecalendar.plugins.NotSupportedException
 import dev.simplecalendar.store.CalendarRepository
 import dev.simplecalendar.store.Database
 import dev.simplecalendar.store.DiscoveredCalendar
@@ -229,30 +231,99 @@ class EventWriteServiceTest {
     }
 
     @Test
-    fun `editing a repeating event is refused with an explanation rather than half done`() = runBlocking {
-        // Seed a recurring resource the way a sync would.
-        val ics = fixture("weekly-moved-override.ics")
-        val href = "/dav.php/calendars/family/mum/weekly.ics"
-        stored[href] = Resource("etag-weekly", ics)
-        events.upsertAll(listOf(expander.toStoredEvent("mum", href, "etag-weekly", ics)!!))
+    fun `editing one instance of a repeating event writes an override with If-Match`() = runBlocking {
+        val href = seedRecurring("weekly-moved-override.ics")
+        val originalEtag = stored.getValue(href).etag
 
-        val failure = assertFailsWith<NotSupportedException> { write.update("mum", href, draft("Другое")) }
-        assertTrue(failure.message!!.contains("повторя"), failure.message)
+        write.update(
+            "mum",
+            href,
+            draft("Тренировка отменяется?", start = ZonedDateTime.of(2026, 9, 21, 12, 0, 0, 0, zone)),
+            instanceId = mondayAt10(21),
+            scope = EditScope.THIS,
+        )
 
-        assertEquals(ics, stored.getValue(href).ics, "a refused edit must leave the file alone")
+        val onServer = stored.getValue(href)
+        assertTrue(onServer.etag != originalEtag, "the edit has to go through the server")
+        assertEquals(2, Regex("RECURRENCE-ID").findAll(onServer.ics).count(), "the moved instance plus this one")
+        assertEquals(onServer.etag, events.byHref("mum", href)?.etag)
+    }
+
+    @Test
+    fun `this and following creates the new series and ends the old one`() = runBlocking {
+        val href = seedRecurring("weekly-moved-override.ics")
+
+        write.update(
+            "mum",
+            href,
+            draft("Тренировка", start = ZonedDateTime.of(2026, 9, 21, 19, 0, 0, 0, zone)),
+            instanceId = mondayAt10(21),
+            scope = EditScope.FOLLOWING,
+        )
+
+        assertEquals(2, stored.size, "the old series and its new tail")
+        assertTrue(stored.getValue(href).ics.contains("UNTIL="), "the old series has to end before the instance")
+        val tailHref = stored.keys.single { it != href }
+        assertNotNull(events.byHref("mum", tailHref), "the tail is cached right away")
+    }
+
+    @Test
+    fun `when the old series cannot be ended the new one is taken down again`() = runBlocking {
+        val href = seedRecurring("weekly-moved-override.ics")
+        // Somebody changes the series from their phone while the form is open.
+        stored[href] = Resource("etag-from-phone", stored.getValue(href).ics)
+
+        assertFailsWith<ConflictException> {
+            write.update(
+                "mum",
+                href,
+                draft("Тренировка", start = ZonedDateTime.of(2026, 9, 21, 19, 0, 0, 0, zone)),
+                instanceId = mondayAt10(21),
+                scope = EditScope.FOLLOWING,
+            )
+        }
+        assertEquals(setOf(href), stored.keys, "no half-split series may be left on the server")
+    }
+
+    @Test
+    fun `deleting one instance keeps the rest of the series`() = runBlocking {
+        val href = seedRecurring("weekly-moved-override.ics")
+
+        write.delete("mum", href, instanceId = mondayAt10(21), scope = EditScope.THIS)
+
+        assertTrue(stored.getValue(href).ics.contains("EXDATE"))
+        assertNotNull(events.byHref("mum", href))
+    }
+
+    @Test
+    fun `an instance that is not in the series is reported as not found`() = runBlocking {
+        val href = seedRecurring("weekly-moved-override.ics")
+
+        // A Tuesday, in a series of Mondays.
+        assertFailsWith<NotFoundException> {
+            write.delete("mum", href, instanceId = "2026-09-22T07:00:00Z", scope = EditScope.THIS)
+        }
+        assertEquals(fixture("weekly-moved-override.ics"), stored.getValue(href).ics, "the file must be left alone")
     }
 
     @Test
     fun `deleting a whole repeating series is allowed`() = runBlocking {
-        val ics = fixture("weekly-moved-override.ics")
-        val href = "/dav.php/calendars/family/mum/weekly.ics"
-        stored[href] = Resource("etag-weekly", ics)
-        events.upsertAll(listOf(expander.toStoredEvent("mum", href, "etag-weekly", ics)!!))
+        val href = seedRecurring("weekly-moved-override.ics")
 
         write.delete("mum", href)
 
         assertTrue(stored.isEmpty())
         assertNull(events.byHref("mum", href))
+    }
+
+    @Test
+    fun `a repeating event is created in the household zone`() = runBlocking {
+        val occurrence = write.create("mum", draft("Кружок"), RepeatRule(Frequency.WEEKLY))
+
+        val onServer = stored.values.single().ics
+        assertTrue(onServer.contains("DTSTART;TZID=Europe/Moscow:20260915T190000"), onServer)
+        assertTrue(onServer.contains("RRULE:FREQ=WEEKLY"))
+        assertTrue(occurrence.recurring)
     }
 
     @Test
@@ -376,6 +447,18 @@ class EventWriteServiceTest {
         checkNotNull(javaClass.getResourceAsStream("/fixtures/$name")) { "missing fixture: $name" }
             .bufferedReader(Charsets.UTF_8)
             .use { it.readText() }
+
+    /** Puts a fixture on the fake server and in the cache, the way a sync would. */
+    private fun seedRecurring(name: String): String {
+        val ics = fixture(name)
+        val href = "/dav.php/calendars/family/mum/${name.removeSuffix(".ics")}.ics"
+        stored[href] = Resource("etag-seed", ics)
+        events.upsertAll(listOf(expander.toStoredEvent("mum", href, "etag-seed", ics)!!))
+        return href
+    }
+
+    /** Instance id of the weekly fixtures' Monday 10:00 (Moscow) on the given day of September. */
+    private fun mondayAt10(day: Int): String = ZonedDateTime.of(2026, 9, day, 10, 0, 0, 0, zone).toInstant().toString()
 
     private fun escape(text: String) = text
         .replace("&", "&amp;")

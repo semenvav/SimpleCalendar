@@ -1,6 +1,7 @@
 package dev.simplecalendar.api
 
 import dev.simplecalendar.AppComponents
+import dev.simplecalendar.ical.RepeatChange
 import dev.simplecalendar.plugins.ApiError
 import dev.simplecalendar.plugins.NotFoundException
 import dev.simplecalendar.plugins.NotSupportedException
@@ -105,24 +106,36 @@ fun Application.installRoutes(components: AppComponents) {
                 val calendarId = request.calendarId?.takeIf { it.isNotBlank() }
                     ?: throw IllegalArgumentException("Не указано, в какой календарь добавить событие.")
 
-                val created = write.create(calendarId, request.toDraft(zone))
+                val draft = request.toDraft(zone)
+                val rule = (request.repeatChange(draft) as? RepeatChange.To)?.rule
+                val created = write.create(calendarId, draft, rule)
                 call.respond(HttpStatusCode.Created, created.toDto(readOnly = false))
             }
 
             patch("/events") {
                 val write = requireWriteService(components)
-                val (calendarId, href) = parseEventId(call.parameters["id"] ?: missing("id"))
+                val event = parseEventId(call.parameters["id"] ?: missing("id"))
+                val scope = parseScope(call.parameters["scope"])
                 val request = call.receive<EventWriteRequest>()
 
-                val updated = write.update(calendarId, href, request.toDraft(zone))
+                val draft = request.toDraft(zone)
+                val updated = write.update(
+                    calendarId = event.calendarId,
+                    href = event.href,
+                    draft = draft,
+                    instanceId = event.instanceId,
+                    scope = scope,
+                    repeat = request.repeatChange(draft),
+                )
                 call.respond(updated.toDto(readOnly = false))
             }
 
             delete("/events") {
                 val write = requireWriteService(components)
-                val (calendarId, href) = parseEventId(call.parameters["id"] ?: missing("id"))
+                val event = parseEventId(call.parameters["id"] ?: missing("id"))
+                val scope = parseScope(call.parameters["scope"])
 
-                write.delete(calendarId, href)
+                write.delete(event.calendarId, event.href, event.instanceId, scope)
                 call.respond(HttpStatusCode.NoContent)
             }
 
@@ -211,19 +224,23 @@ private fun requireWriteService(components: AppComponents): EventWriteService =
     components.write
         ?: throw NotSupportedException("Источник календарей не настроен — писать пока некуда.")
 
+/** Which resource, and for a repeating event which instance of it, a write is about. */
+private data class EventRef(val calendarId: String, val href: String, val instanceId: String?)
+
 /**
- * Splits the composite id the read API hands out: `calendarId|href|recurrenceId`.
+ * Splits the composite id the read API hands out: `calendarId|href|instanceId`, the last part
+ * `-` for an event that does not repeat.
  *
  * An href is a URL path and can never contain `|`, so splitting is unambiguous. Passing the id
  * as a query parameter rather than in the path keeps the encoded slashes inside it from being
  * re-split into path segments.
  */
-private fun parseEventId(id: String): Pair<String, String> {
+private fun parseEventId(id: String): EventRef {
     val parts = id.split('|', limit = 3)
     require(parts.size >= 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
         "Неверный идентификатор события: «$id»."
     }
-    return parts[0] to parts[1]
+    return EventRef(parts[0], parts[1], parts.getOrNull(2)?.takeIf { it.isNotBlank() && it != "-" })
 }
 
 /**

@@ -34,6 +34,24 @@ fun EventTime.endInstant(zone: ZoneId): Instant = when (this) {
 
 val EventTime.isAllDay: Boolean get() = this is EventTime.AllDay
 
+/** How often a simple repetition comes round. */
+enum class Frequency { DAILY, WEEKLY, MONTHLY, YEARLY }
+
+/**
+ * A repetition simple enough for the event form: every [interval] days, weeks, months or years,
+ * optionally up to a last day.
+ *
+ * Deliberately small. Richer rules a phone can write — "the second Tuesday", "Mon, Wed and Fri" —
+ * are read and expanded correctly all the same; they are just not editable here, and an edit that
+ * leaves the repeat control alone keeps them exactly as they are.
+ */
+data class RepeatRule(
+    val frequency: Frequency,
+    val interval: Int = 1,
+    /** Last day an instance may fall on, inclusive; `null` repeats forever. */
+    val until: LocalDate? = null,
+)
+
 /**
  * A calendar collection on the CalDAV server together with our local presentation settings.
  *
@@ -94,8 +112,8 @@ data class Occurrence(
     val href: String,
     val uid: String,
     /**
-     * `RECURRENCE-ID` of this instance in its original iCalendar form, or `null` for
-     * non-recurring events. Identifies which instance to edit or delete.
+     * Which instance of a series this is, as an instance id (`toInstanceId` in `ical/Ical.kt`),
+     * or `null` for non-recurring events. Identifies which instance to edit or delete.
      */
     val recurrenceId: String?,
     val time: EventTime,
@@ -104,4 +122,6 @@ data class Occurrence(
     val location: String?,
     val status: String?,
     val recurring: Boolean,
+    /** The series' rule when the form can show it; `null` for single events and richer rules. */
+    val repeat: RepeatRule? = null,
 )

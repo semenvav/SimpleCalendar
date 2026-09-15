@@ -1,9 +1,13 @@
 package dev.simplecalendar.api
 
+import dev.simplecalendar.ical.EditScope
 import dev.simplecalendar.ical.EventDraft
+import dev.simplecalendar.ical.RepeatChange
 import dev.simplecalendar.model.CalendarCollection
 import dev.simplecalendar.model.EventTime
+import dev.simplecalendar.model.Frequency
 import dev.simplecalendar.model.Occurrence
+import dev.simplecalendar.model.RepeatRule
 import dev.simplecalendar.sync.SyncStatus
 import kotlinx.serialization.Serializable
 import java.time.Instant
@@ -22,6 +26,21 @@ data class CalendarDto(
     val readOnly: Boolean,
     val visible: Boolean,
     val sortOrder: Int,
+)
+
+/**
+ * A repetition as the form speaks of it.
+ *
+ * In a request an absent `repeat` leaves the event's rule alone — whatever it is, including rules
+ * richer than this — and `NONE` stops the repetition.
+ */
+@Serializable
+data class RepeatDto(
+    /** `NONE`, `DAILY`, `WEEKLY`, `MONTHLY` or `YEARLY`. */
+    val frequency: String,
+    val interval: Int = 1,
+    /** Last day an instance may fall on, `YYYY-MM-DD`, inclusive; absent repeats forever. */
+    val until: String? = null,
 )
 
 /**
@@ -44,6 +63,8 @@ data class EventDto(
     val start: String,
     val end: String,
     val recurring: Boolean,
+    /** The series' rule when the form can show it; absent for single events and richer rules. */
+    val repeat: RepeatDto? = null,
     val readOnly: Boolean,
 )
 
@@ -90,6 +111,7 @@ data class EventWriteRequest(
     val allDay: Boolean,
     val start: String,
     val end: String,
+    val repeat: RepeatDto? = null,
 )
 
 /**
@@ -123,6 +145,34 @@ fun EventWriteRequest.toDraft(zone: ZoneId): EventDraft {
     )
 }
 
+/** Reads [EventWriteRequest.repeat] against the [draft] it came with. */
+fun EventWriteRequest.repeatChange(draft: EventDraft): RepeatChange {
+    val raw = repeat ?: return RepeatChange.Keep
+    if (raw.frequency.equals("NONE", ignoreCase = true)) return RepeatChange.To(null)
+
+    val frequency = Frequency.entries.firstOrNull { it.name.equals(raw.frequency, ignoreCase = true) }
+        ?: throw IllegalArgumentException("Неизвестная частота повторения «${raw.frequency}».")
+    require(raw.interval in 1..99) { "Повторять можно с интервалом от 1 до 99." }
+
+    val until = raw.until?.takeIf { it.isNotBlank() }?.let(::parseDate)
+    val firstDay = when (val time = draft.time) {
+        is EventTime.AllDay -> time.start
+        is EventTime.Timed -> time.start.toLocalDate()
+    }
+    require(until == null || !until.isBefore(firstDay)) {
+        "Повторение не может закончиться раньше, чем начнётся событие."
+    }
+    return RepeatChange.To(RepeatRule(frequency, raw.interval, until))
+}
+
+/** The `scope` query parameter of an edit or delete; absent means the whole event, as before M3. */
+fun parseScope(raw: String?): EditScope = when (raw?.trim()?.lowercase()) {
+    null, "", "all" -> EditScope.ALL
+    "this" -> EditScope.THIS
+    "following" -> EditScope.FOLLOWING
+    else -> throw IllegalArgumentException("Неизвестная область правки «$raw»: ожидается this, following или all.")
+}
+
 private fun parseDate(raw: String): LocalDate =
     runCatching { LocalDate.parse(raw) }
         .getOrElse { throw IllegalArgumentException("Не удалось прочитать дату «$raw».") }
@@ -140,6 +190,12 @@ fun CalendarCollection.toDto() = CalendarDto(
     readOnly = readOnly,
     visible = visible,
     sortOrder = sortOrder,
+)
+
+fun RepeatRule.toDto() = RepeatDto(
+    frequency = frequency.name,
+    interval = interval,
+    until = until?.toString(),
 )
 
 fun Occurrence.toDto(readOnly: Boolean): EventDto {
@@ -160,6 +216,7 @@ fun Occurrence.toDto(readOnly: Boolean): EventDto {
         start = start,
         end = end,
         recurring = recurring,
+        repeat = repeat?.toDto(),
         readOnly = readOnly,
     )
 }

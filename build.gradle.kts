@@ -39,6 +39,8 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.testcontainers)
+    testImplementation(libs.testcontainers.junit)
     testImplementation(kotlin("test"))
     testRuntimeOnly(libs.junit.platform.launcher)
 }

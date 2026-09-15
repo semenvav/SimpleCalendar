@@ -3,12 +3,18 @@ package dev.simplecalendar.service
 import dev.simplecalendar.caldav.CalDavClient
 import dev.simplecalendar.caldav.CalDavException
 import dev.simplecalendar.caldav.hrefPath
+import dev.simplecalendar.ical.EditScope
 import dev.simplecalendar.ical.EventDraft
 import dev.simplecalendar.ical.EventExpander
 import dev.simplecalendar.ical.IcsParser
 import dev.simplecalendar.ical.IcsWriter
+import dev.simplecalendar.ical.NoSuchInstanceException
+import dev.simplecalendar.ical.RepeatChange
+import dev.simplecalendar.ical.SeriesChange
+import dev.simplecalendar.ical.SeriesEditor
 import dev.simplecalendar.model.CalendarCollection
 import dev.simplecalendar.model.Occurrence
+import dev.simplecalendar.model.RepeatRule
 import dev.simplecalendar.model.StoredEvent
 import dev.simplecalendar.model.startInstant
 import dev.simplecalendar.plugins.ConflictException
@@ -42,13 +48,14 @@ class EventWriteService(
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
+    private val editor = SeriesEditor(zone, expander)
 
-    suspend fun create(calendarId: String, draft: EventDraft): Occurrence {
+    suspend fun create(calendarId: String, draft: EventDraft, repeat: RepeatRule? = null): Occurrence {
         val calendar = writableCalendar(calendarId)
 
         val uid = UUID.randomUUID().toString()
-        val href = "${hrefPath(calendar.url).trimEnd('/')}/$uid.ics"
-        val ics = IcsWriter.create(uid, draft)
+        val href = hrefFor(calendar, uid)
+        val ics = IcsWriter.create(uid, draft, repeat, zone)
 
         // No If-Match, but If-None-Match: * — refuse to silently clobber if the name is taken.
         val etag = client.put(calendar.url, href, ics, ifMatch = null)
@@ -57,49 +64,98 @@ class EventWriteService(
         return storeAndReturn(calendar, href, ics, etag)
     }
 
-    suspend fun update(calendarId: String, href: String, draft: EventDraft): Occurrence {
+    /**
+     * Changes an event.
+     *
+     * For a repeating one, [instanceId] names the instance the user opened and [scope] says how
+     * much of the series the change covers; a single event ignores both. [repeat] is what to do
+     * with the rule — by default, nothing.
+     */
+    suspend fun update(
+        calendarId: String,
+        href: String,
+        draft: EventDraft,
+        instanceId: String? = null,
+        scope: EditScope = EditScope.ALL,
+        repeat: RepeatChange = RepeatChange.Keep,
+    ): Occurrence {
         val calendar = writableCalendar(calendarId)
         val stored = storedEvent(calendarId, href)
 
-        if (stored.recurring) {
-            throw NotSupportedException(
-                "Это повторяющееся событие. Правка отдельных повторений появится на следующем этапе — " +
-                    "пока его можно только удалить целиком.",
-            )
-        }
+        val change = seriesChange { editor.edit(stored.ics, instanceId, scope, draft, repeat) }
+        val result = apply(calendar, stored, change)
+        log.info("Updated event '{}' in '{}' ({})", draft.title, calendar.name, scope.name.lowercase())
 
-        val ics = IcsWriter.applyTo(stored.ics, draft)
-            ?: throw NotSupportedException("В этом файле нет события, которое можно изменить.")
-
-        val etag = withConflictHandling(calendar, href) {
-            client.put(calendar.url, href, ics, ifMatch = stored.etag)
-        }
-        log.info("Updated event '{}' in '{}'", draft.title, calendar.name)
-
-        return storeAndReturn(calendar, href, ics, etag)
+        return result ?: throw NotSupportedException("Событие сохранено, но не удалось его отобразить.")
     }
 
     /**
-     * Deletes the whole resource.
-     *
-     * For a repeating event that means the entire series. Removing a single occurrence needs the
-     * EXDATE machinery and belongs with the rest of the recurrence editing; the UI says so
-     * explicitly rather than letting somebody delete more than they meant to.
+     * Deletes an event — for a repeating one, the instance [instanceId] names, it and the ones
+     * after it, or the whole series, as [scope] says.
      */
-    suspend fun delete(calendarId: String, href: String) {
+    suspend fun delete(
+        calendarId: String,
+        href: String,
+        instanceId: String? = null,
+        scope: EditScope = EditScope.ALL,
+    ) {
         val calendar = writableCalendar(calendarId)
         val stored = storedEvent(calendarId, href)
 
-        withConflictHandling(calendar, href) {
-            client.delete(calendar.url, href, stored.etag)
-        }
-
-        events.deleteHrefs(calendarId, listOf(href))
-        onChange()
-        log.info("Deleted {} from '{}'", href, calendar.name)
+        val change = seriesChange { editor.delete(stored.ics, instanceId, scope) }
+        apply(calendar, stored, change)
+        log.info("Deleted {} from '{}' ({})", href, calendar.name, scope.name.lowercase())
     }
 
     // --- internals ----------------------------------------------------------------------------
+
+    /**
+     * Carries a [SeriesChange] out on the server, then in the cache, and returns the occurrence
+     * that best stands for the result — the new tail of a split series, if there is one.
+     *
+     * A split takes two writes. The tail goes up first: should the second write then fail, the
+     * worst case is a stretch of the series shown twice — visible and easy to fix — rather than a
+     * stretch silently gone. And on that failure the tail is taken down again.
+     */
+    private suspend fun apply(calendar: CalendarCollection, stored: StoredEvent, change: SeriesChange): Occurrence? {
+        val created = change.created?.let { tail ->
+            val href = hrefFor(calendar, tail.uid)
+            Written(href, tail.ics, client.put(calendar.url, href, tail.ics, ifMatch = null))
+        }
+
+        val etag = try {
+            withConflictHandling(calendar, stored.href) {
+                if (change.updated == null) {
+                    client.delete(calendar.url, stored.href, stored.etag)
+                    null
+                } else {
+                    client.put(calendar.url, stored.href, change.updated, ifMatch = stored.etag)
+                }
+            }
+        } catch (e: Exception) {
+            created?.let { runCatching { client.delete(calendar.url, it.href, it.etag) } }
+            throw e
+        }
+
+        val updated = if (change.updated == null) {
+            events.deleteHrefs(calendar.id, listOf(stored.href))
+            onChange()
+            null
+        } else {
+            storeAndReturn(calendar, stored.href, change.updated, etag)
+        }
+        return created?.let { storeAndReturn(calendar, it.href, it.ics, it.etag) } ?: updated
+    }
+
+    private class Written(val href: String, val ics: String, val etag: String?)
+
+    private inline fun seriesChange(block: () -> SeriesChange): SeriesChange = try {
+        block()
+    } catch (e: NoSuchInstanceException) {
+        throw NotFoundException(e.message ?: "Повторение не найдено.")
+    }
+
+    private fun hrefFor(calendar: CalendarCollection, uid: String) = "${hrefPath(calendar.url).trimEnd('/')}/$uid.ics"
 
     private fun writableCalendar(calendarId: String): CalendarCollection {
         val calendar = calendars.byId(calendarId)

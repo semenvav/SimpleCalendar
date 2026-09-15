@@ -1,4 +1,4 @@
-import type { CalendarDto, EventDto, HealthDto, SyncStatusDto } from './types'
+import type { CalendarDto, EditScope, EventDto, HealthDto, RepeatDto, SyncStatusDto } from './types'
 
 const BASE = '/api'
 
@@ -45,19 +45,29 @@ export interface EventWriteRequest {
   start: string
   /** Exclusive, same as everywhere else in the API. */
   end: string
+  /** Left out, the event's rule stays exactly as it is. */
+  repeat?: RepeatDto
+}
+
+/** `id=…&scope=…`. The id carries `|` and `:`, so it always goes through URLSearchParams. */
+function eventQuery(id: string, scope?: EditScope): string {
+  const params = new URLSearchParams({ id })
+  if (scope) params.set('scope', scope)
+  return params.toString()
 }
 
 export const createEvent = (body: EventWriteRequest) =>
   request<EventDto>('/events', { method: 'POST', body: JSON.stringify(body) })
 
-export const updateEvent = (id: string, body: EventWriteRequest) =>
-  request<EventDto>(`/events?id=${encodeURIComponent(id)}`, {
+/** For a repeating event, [scope] says how much of the series the change covers. */
+export const updateEvent = (id: string, body: EventWriteRequest, scope?: EditScope) =>
+  request<EventDto>(`/events?${eventQuery(id, scope)}`, {
     method: 'PATCH',
     body: JSON.stringify(body),
   })
 
-export async function deleteEvent(id: string): Promise<void> {
-  const response = await fetch(`${BASE}/events?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+export async function deleteEvent(id: string, scope?: EditScope): Promise<void> {
+  const response = await fetch(`${BASE}/events?${eventQuery(id, scope)}`, { method: 'DELETE' })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     throw new ApiError(response.status, body?.message ?? `${response.status} ${response.statusText}`)

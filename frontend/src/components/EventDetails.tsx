@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { EventDetailsData } from '../calendar/adapter'
 import { addDays, capitalise, formatDayMonth, formatTime, formatWeekday, isSameDay, parseLocal } from '../lib/dates'
+import { describeRepeat } from '../lib/repeat'
 
 interface EventDetailsProps {
   event: EventDetailsData
@@ -12,7 +13,7 @@ interface EventDetailsProps {
 
 export function EventDetails({ event, busy, onEdit, onDelete, onClose }: EventDetailsProps) {
   const source = event.source
-  const editable = !source.readOnly && !source.recurring
+  const repeat = describeRepeat(source)
 
   return (
     <div className="details-backdrop" onClick={onClose}>
@@ -41,10 +42,10 @@ export function EventDetails({ event, busy, onEdit, onDelete, onClose }: EventDe
             </>
           )}
 
-          {source.recurring && (
+          {repeat && (
             <>
               <dt>Повтор</dt>
-              <dd>Повторяющееся событие</dd>
+              <dd>{repeat}</dd>
             </>
           )}
 
@@ -59,30 +60,16 @@ export function EventDetails({ event, busy, onEdit, onDelete, onClose }: EventDe
         {source.readOnly ? (
           <p className="details-note">Этот календарь доступен только для чтения.</p>
         ) : (
-          <>
-            {source.recurring && (
-              <p className="details-note">
-                Правка отдельных повторений появится на следующем этапе. Сейчас серию можно удалить
-                только целиком.
-              </p>
-            )}
-            <div className="form-actions">
-              <button
-                type="button"
-                className="button danger"
-                onClick={onDelete}
-                disabled={busy}
-              >
-                {source.recurring ? 'Удалить все повторения' : 'Удалить'}
-              </button>
-              <span className="form-actions-spacer" />
-              {editable && (
-                <button type="button" className="button primary" onClick={onEdit} disabled={busy}>
-                  Изменить
-                </button>
-              )}
-            </div>
-          </>
+          // For a repeating event both buttons go on to ask which part of the series is meant.
+          <div className="form-actions">
+            <button type="button" className="button danger" onClick={onDelete} disabled={busy}>
+              Удалить
+            </button>
+            <span className="form-actions-spacer" />
+            <button type="button" className="button primary" onClick={onEdit} disabled={busy}>
+              Изменить
+            </button>
+          </div>
         )}
       </aside>
     </div>

@@ -1,7 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import type { EventWriteRequest } from '../api/client'
-import type { CalendarDto, EventDto } from '../api/types'
+import type { CalendarDto, EventDto, RepeatDto } from '../api/types'
 import { parseLocal, shiftIsoDate, toIsoDate, toIsoTime } from '../lib/dates'
+import {
+  PRESET_ORDER,
+  choiceOf,
+  describeRepeat,
+  isPreset,
+  presetLabel,
+  ruleFor,
+  type RepeatChoice,
+} from '../lib/repeat'
 
 interface EventFormProps {
   calendars: CalendarDto[]
@@ -26,6 +35,9 @@ interface FormValues {
   startTime: string
   endDate: string
   endTime: string
+  repeat: RepeatChoice
+  /** Last day of the repetition, `YYYY-MM-DD`; empty repeats forever. */
+  repeatUntil: string
 }
 
 export function EventForm({
@@ -39,7 +51,9 @@ export function EventForm({
   onClose,
 }: EventFormProps) {
   const writable = calendars.filter((c) => !c.readOnly)
-  const [values, setValues] = useState<FormValues>(() => initialValues(event, defaultDate, writable))
+  // Kept apart from the live values: the repeat is sent only if the person actually changed it.
+  const [initial] = useState<FormValues>(() => initialValues(event, defaultDate, writable))
+  const [values, setValues] = useState<FormValues>(initial)
   const [problem, setProblem] = useState<string | null>(null)
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) =>
@@ -54,10 +68,12 @@ export function EventForm({
       return
     }
     setProblem(null)
-    onSubmit(toRequest(values, event))
+    onSubmit(toRequest(values, initial, event))
   }
 
   const noCalendars = writable.length === 0
+  const firstDay = values.startDate ? parseLocal(values.startDate) : defaultDate
+  const repeating = isPreset(values.repeat)
 
   return (
     <div className="details-backdrop" onClick={onClose}>
@@ -154,6 +170,36 @@ export function EventForm({
             )}
           </div>
 
+          <div className="field-row">
+            <label className="field">
+              <span>Повтор</span>
+              <select value={values.repeat} onChange={(e) => set('repeat', e.target.value as RepeatChoice)}>
+                <option value="none">Не повторяется</option>
+                {PRESET_ORDER.map((id) => (
+                  <option key={id} value={id}>
+                    {presetLabel(id, firstDay)}
+                  </option>
+                ))}
+                {/* A rule the form cannot show stays selectable as it is — and stays untouched. */}
+                {initial.repeat === 'custom' && event && (
+                  <option value="custom">Как сейчас: {describeRepeat(event)?.toLowerCase()}</option>
+                )}
+              </select>
+            </label>
+            {repeating && (
+              <label className="field field-until">
+                <span>До какого дня</span>
+                <input
+                  type="date"
+                  value={values.repeatUntil}
+                  min={values.startDate}
+                  onChange={(e) => set('repeatUntil', e.target.value)}
+                />
+              </label>
+            )}
+          </div>
+          {repeating && !values.repeatUntil && <p className="field-hint">Без даты — повторяется без конца.</p>}
+
           <label className="field">
             <span>Место</span>
             <input
@@ -218,6 +264,8 @@ function initialValues(event: EventDto | null, defaultDate: Date, writable: Cale
       startTime: toIsoTime(start),
       endDate: toIsoDate(end),
       endTime: toIsoTime(end),
+      repeat: 'none',
+      repeatUntil: '',
     }
   }
 
@@ -235,12 +283,17 @@ function initialValues(event: EventDto | null, defaultDate: Date, writable: Cale
     // The API's all-day end is exclusive; people think in terms of the last day included.
     endDate: event.allDay ? shiftIsoDate(toIsoDate(end), -1) : toIsoDate(end),
     endTime: toIsoTime(end),
+    repeat: choiceOf(event),
+    repeatUntil: event.repeat?.until ?? '',
   }
 }
 
 function validate(values: FormValues): string | null {
   if (!values.title.trim()) return 'Впишите название события.'
   if (!values.calendarId) return 'Выберите календарь.'
+  if (isPreset(values.repeat) && values.repeatUntil && values.repeatUntil < values.startDate) {
+    return 'Повтор не может закончиться раньше, чем начнётся событие.'
+  }
 
   if (values.allDay) {
     if (values.endDate < values.startDate) return 'Последний день не может быть раньше первого.'
@@ -253,12 +306,25 @@ function validate(values: FormValues): string | null {
   return null
 }
 
-function toRequest(values: FormValues, event: EventDto | null): EventWriteRequest {
+/**
+ * The `repeat` to send, or undefined to leave the rule alone — which is also what keeps a rule the
+ * form cannot show exactly as it was. Only a change the person made goes out.
+ */
+function repeatRequest(values: FormValues, initial: FormValues): RepeatDto | undefined {
+  const changed =
+    values.repeat !== initial.repeat || (isPreset(values.repeat) && values.repeatUntil !== initial.repeatUntil)
+  if (!changed) return undefined
+  if (values.repeat === 'none') return { frequency: 'NONE' }
+  return isPreset(values.repeat) ? ruleFor(values.repeat, values.repeatUntil) : undefined
+}
+
+function toRequest(values: FormValues, initial: FormValues, event: EventDto | null): EventWriteRequest {
   const base = {
     calendarId: event ? undefined : values.calendarId,
     title: values.title.trim(),
     description: values.description.trim() || undefined,
     location: values.location.trim() || undefined,
+    repeat: repeatRequest(values, initial),
   }
 
   return values.allDay

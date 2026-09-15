@@ -1,9 +1,12 @@
 package dev.simplecalendar.ical
 
 import dev.simplecalendar.model.EventTime
+import dev.simplecalendar.model.Frequency
 import dev.simplecalendar.model.Occurrence
+import dev.simplecalendar.model.RepeatRule
 import dev.simplecalendar.model.startInstant
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.test.Test
@@ -155,7 +158,38 @@ class EventExpanderTest {
         assertEquals("Поликлиника", occurrence.location)
     }
 
+    @Test
+    fun `a rule the form can show is read back as one, whichever client spelled it`() {
+        val household = EventExpander(ZoneId.of("Asia/Jerusalem"))
+
+        // Google spells a weekly event FREQ=WEEKLY;BYDAY=MO — the same rule as plain FREQ=WEEKLY.
+        assertEquals(RepeatRule(Frequency.WEEKLY), household.repeatOf(master("weekly-jerusalem.ics")))
+        // A COUNT reads as the day of the last instance: the form speaks in days.
+        assertEquals(
+            RepeatRule(Frequency.WEEKLY, until = LocalDate.of(2026, 9, 28)),
+            expander.repeatOf(master("weekly-exdate.ics")),
+        )
+        assertEquals(
+            RepeatRule(Frequency.DAILY, until = LocalDate.of(2026, 9, 20)),
+            expander.repeatOf(master("all-day-daily.ics")),
+        )
+        assertNull(household.repeatOf(master("monthly-second-tuesday.ics")), "the second Tuesday is beyond the form")
+    }
+
+    @Test
+    fun `every instance of a series carries its rule and its own instance id`() {
+        val occurrences = occurrences("weekly-exdate.ics", "2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z")
+
+        assertTrue(occurrences.all { it.repeat == RepeatRule(Frequency.WEEKLY, until = LocalDate.of(2026, 9, 28)) })
+        assertEquals(
+            listOf("2026-09-07T07:00:00Z", "2026-09-14T07:00:00Z", "2026-09-28T07:00:00Z"),
+            occurrences.map { it.recurrenceId },
+        )
+    }
+
     // --- helpers ------------------------------------------------------------------------------
+
+    private fun master(name: String) = checkNotNull(fixture(name).master)
 
     private fun fixture(name: String): ParsedEvent = IcsParser.parse(readFixture(name)).single()
 

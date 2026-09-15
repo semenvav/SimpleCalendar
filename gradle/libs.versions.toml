@@ -7,6 +7,7 @@ sqlite = "3.53.4.0"
 hikari = "7.1.0"
 ical4j = "4.3.0"
 junit = "5.14.4"
+testcontainers = "2.0.5"
 
 [libraries]
 # --- Ktor server ---
@@ -39,6 +40,9 @@ ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref 
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+# Round trips against a real Baikal in a throwaway container.
+testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

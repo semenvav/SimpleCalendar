@@ -2,10 +2,12 @@ package dev.simplecalendar.ical
 
 import dev.simplecalendar.model.EventTime
 import dev.simplecalendar.model.Occurrence
+import dev.simplecalendar.model.RepeatRule
 import dev.simplecalendar.model.StoredEvent
 import dev.simplecalendar.model.endInstant
 import dev.simplecalendar.model.startInstant
-import net.fortuna.ical4j.model.TemporalAdapter
+import net.fortuna.ical4j.model.Property
+import net.fortuna.ical4j.model.Recur
 import net.fortuna.ical4j.model.component.VEvent
 import java.time.Duration
 import java.time.Instant
@@ -56,11 +58,14 @@ class EventExpander(private val zone: ZoneId) {
             .toMap()
 
         val master = parsed.master
+        val recurring = parsed.isRecurring
+        // One rule for the whole series; every instance carries it so the form can show it.
+        val repeat = if (recurring && master != null) repeatOf(master) else null
+
         if (master != null) {
             val seed = master.startTemporal()
             if (seed != null) {
                 val duration = master.duration()
-                val recurring = parsed.isRecurring
                 val exceptionKeys = master.exceptionDates().mapTo(mutableSetOf()) { it.recurrenceKey(zone) }
 
                 val starts = if (recurring) recurrenceStarts(master, seed, duration, from, to) else listOf(seed)
@@ -71,15 +76,16 @@ class EventExpander(private val zone: ZoneId) {
                     // Replaced by an override — emitted below at its own time, not this one.
                     if (key in overridesByKey) continue
 
-                    val time = eventTimeOf(start, duration)
+                    val time = eventTimeOf(start, duration, zone)
                     if (!overlaps(time, from, to)) continue
                     result += master.toOccurrence(
                         calendarId = calendarId,
                         href = href,
                         uid = parsed.uid,
-                        recurrenceId = if (recurring) TemporalAdapter(start).toString() else null,
+                        recurrenceId = if (recurring) start.toInstanceId(zone) else null,
                         time = time,
                         recurring = recurring,
+                        repeat = repeat,
                     )
                 }
             }
@@ -87,19 +93,62 @@ class EventExpander(private val zone: ZoneId) {
 
         for (override in parsed.overrides) {
             val start = override.startTemporal() ?: continue
-            val time = eventTimeOf(start, override.duration())
+            val time = eventTimeOf(start, override.duration(), zone)
             if (!overlaps(time, from, to)) continue
             result += override.toOccurrence(
                 calendarId = calendarId,
                 href = href,
                 uid = parsed.uid,
-                recurrenceId = override.recurrenceIdTemporal()?.let { TemporalAdapter(it).toString() },
+                recurrenceId = override.recurrenceIdTemporal()?.toInstanceId(zone),
                 time = time,
                 recurring = true,
+                repeat = repeat,
             )
         }
 
         return result
+    }
+
+    /**
+     * The master's rule as the form shows it, or `null` when it is richer than a [RepeatRule].
+     *
+     * The end is reported as the last day the rule reaches, whatever wrote it: a COUNT has no day
+     * at all, and an UNTIL can sit anywhere — the old half of a split series ends the second
+     * before the cut, on a day the rule no longer reaches. "Until 10 November" on a card whose
+     * last Tuesday is the 3rd would be read as the 10th still happening. An exception on that
+     * last day does not move it, as in other calendars: the rule runs to it, the day is cancelled.
+     * Leaving the control alone keeps the rule's own spelling either way.
+     */
+    fun repeatOf(master: VEvent): RepeatRule? {
+        val rules = master.recurrenceRules()
+        if (rules.size != 1 || master.recurrenceDates().isNotEmpty()) return null
+        val seed = master.startTemporal() ?: return null
+        val raw = master.getProperties<Property>(Property.RRULE).single().value
+        val (frequency, interval) = simpleShape(raw, seed.dateIn(zone)) ?: return null
+
+        val recur = rules.single()
+        val seriesZone = (seed as? ZonedDateTime)?.zone ?: zone
+        val until: Temporal? = recur.until
+        val lastDay = when {
+            // Past the expansion cap, the UNTIL's own day is the honest answer left.
+            until != null -> (lastStart(recur, seed) ?: until).toZonedIn(seriesZone).toLocalDate()
+            recur.count > 0 -> (lastStart(recur, seed) ?: return null).toZonedIn(seriesZone).toLocalDate()
+            else -> null
+        }
+        return RepeatRule(frequency, interval, lastDay)
+    }
+
+    /** The last start of a bounded rule, or `null` if it has none or runs past [COUNT_CAP]. */
+    internal fun lastStart(recur: Recur<Temporal>, seed: Temporal): Temporal? {
+        val dates = recur.getDates(seed, seed, boundaryLike(seed, FAR_FUTURE), COUNT_CAP)
+        return if (dates.size >= COUNT_CAP) null else dates.lastOrNull()
+    }
+
+    /** How many starts [recur] produces before [instance] — what a COUNT has used up by then. */
+    internal fun generatedBefore(recur: Recur<Temporal>, seed: Temporal, instance: Temporal): Int {
+        val cut = instance.toInstantIn(zone)
+        return recur.getDates(seed, seed, boundaryLike(seed, cut.plus(Duration.ofDays(1))), COUNT_CAP)
+            .count { it.toInstantIn(zone).isBefore(cut) }
     }
 
     /**
@@ -172,14 +221,14 @@ class EventExpander(private val zone: ZoneId) {
             val seed = master.startTemporal()
             if (seed != null) {
                 val duration = master.duration()
-                val seedTime = eventTimeOf(seed, duration)
+                val seedTime = eventTimeOf(seed, duration, zone)
                 note(seedTime.startInstant(zone), seedTime.endInstant(zone))
 
                 for (recur in master.recurrenceRules()) {
                     val until = recur.until
                     when {
                         until != null -> {
-                            val t = eventTimeOf(until, duration)
+                            val t = eventTimeOf(until, duration, zone)
                             note(t.startInstant(zone), t.endInstant(zone))
                         }
                         recur.count > 0 -> {
@@ -191,7 +240,7 @@ class EventExpander(private val zone: ZoneId) {
                                 openEnded = true
                             } else {
                                 dates.lastOrNull()?.let {
-                                    val t = eventTimeOf(it, duration)
+                                    val t = eventTimeOf(it, duration, zone)
                                     note(t.startInstant(zone), t.endInstant(zone))
                                 }
                             }
@@ -201,7 +250,7 @@ class EventExpander(private val zone: ZoneId) {
                 }
 
                 for (rdate in master.recurrenceDates()) {
-                    val t = eventTimeOf(rdate, duration)
+                    val t = eventTimeOf(rdate, duration, zone)
                     note(t.startInstant(zone), t.endInstant(zone))
                 }
             }
@@ -209,7 +258,7 @@ class EventExpander(private val zone: ZoneId) {
 
         for (override in parsed.overrides) {
             val start = override.startTemporal() ?: continue
-            val t = eventTimeOf(start, override.duration())
+            val t = eventTimeOf(start, override.duration(), zone)
             note(t.startInstant(zone), t.endInstant(zone))
         }
 
@@ -252,25 +301,6 @@ class EventExpander(private val zone: ZoneId) {
         return starts.toList()
     }
 
-    /** Builds the typed time range for an instance starting at [start] and lasting [duration]. */
-    private fun eventTimeOf(start: Temporal, duration: TemporalAmount): EventTime =
-        if (start is LocalDate) {
-            EventTime.AllDay(start, allDayEnd(start, duration))
-        } else {
-            val zoned = start.toZonedIn(zone)
-            EventTime.Timed(zoned, zoned.plus(duration))
-        }
-
-    /** All-day events always cover at least one whole day, whatever the source said. */
-    private fun allDayEnd(start: LocalDate, duration: TemporalAmount): LocalDate {
-        val end = when (duration) {
-            is Period -> start.plus(duration)
-            is Duration -> start.plusDays(duration.toDays())
-            else -> start.plusDays(1)
-        }
-        return if (end.isAfter(start)) end else start.plusDays(1)
-    }
-
     private fun overlaps(time: EventTime, from: Instant, to: Instant): Boolean {
         val start = time.startInstant(zone)
         val end = time.endInstant(zone)
@@ -307,17 +337,19 @@ class EventExpander(private val zone: ZoneId) {
         recurrenceId: String?,
         time: EventTime,
         recurring: Boolean,
+        repeat: RepeatRule?,
     ) = Occurrence(
         calendarId = calendarId,
         href = href,
         uid = uid,
         recurrenceId = recurrenceId,
         time = time,
-        title = summaryValue()?.takeIf { it.isNotBlank() } ?: "(без названия)",
+        title = summaryValue()?.takeIf { it.isNotBlank() } ?: UNTITLED,
         description = descriptionValue()?.takeIf { it.isNotBlank() },
         location = locationValue()?.takeIf { it.isNotBlank() },
         status = statusValue(),
         recurring = recurring,
+        repeat = repeat,
     )
 
     private companion object {

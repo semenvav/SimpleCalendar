@@ -1,6 +1,8 @@
 package dev.simplecalendar.ical
 
 import dev.simplecalendar.model.EventTime
+import dev.simplecalendar.model.Frequency
+import dev.simplecalendar.model.RepeatRule
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -112,6 +114,45 @@ class IcsWriterTest {
         assertEquals("09:00", summer.toLocalTime().toString())
         assertEquals("09:00", winter.toLocalTime().toString())
         assertEquals(jerusalem, winter.zone)
+    }
+
+    @Test
+    fun `a new repeating event is written in the household zone and keeps its hour across DST`() {
+        val jerusalem = ZoneId.of("Asia/Jerusalem")
+        val start = ZonedDateTime.of(2026, 10, 20, 9, 0, 0, 0, jerusalem)
+        val ics = IcsWriter.create(
+            uid = "weekly@simplecalendar",
+            draft = draft(EventTime.Timed(start, start.plusHours(1))),
+            repeat = RepeatRule(Frequency.WEEKLY, until = LocalDate.of(2026, 11, 3)),
+            zone = jerusalem,
+        )
+
+        assertTrue(ics.contains("DTSTART;TZID=Asia/Jerusalem:20261020T090000"), ics)
+        assertTrue(ics.contains("BEGIN:VTIMEZONE"), "a TZID needs its definition in the same file")
+        assertTrue(ics.contains("UNTIL=20261103T215959Z"), "through the whole of 3 Nov, Israel time\n$ics")
+
+        val hours = EventExpander(jerusalem).expand(
+            IcsParser.parse(ics).single(),
+            calendarId = "cal",
+            href = "/e.ics",
+            from = Instant.parse("2026-10-01T00:00:00Z"),
+            to = Instant.parse("2026-12-01T00:00:00Z"),
+        ).map { (it.time as EventTime.Timed).start.toLocalDateTime().toString() }
+        assertEquals(listOf("2026-10-20T09:00", "2026-10-27T09:00", "2026-11-03T09:00"), hours)
+    }
+
+    @Test
+    fun `a repeating all-day event needs no zone at all`() {
+        val ics = IcsWriter.create(
+            uid = "birthday@simplecalendar",
+            draft = draft(EventTime.AllDay(LocalDate.of(2026, 9, 14), LocalDate.of(2026, 9, 15))),
+            repeat = RepeatRule(Frequency.YEARLY),
+            zone = moscow,
+        )
+
+        assertTrue(ics.contains("DTSTART;VALUE=DATE:20260914"), ics)
+        assertTrue(ics.contains("RRULE:FREQ=YEARLY"), ics)
+        assertTrue(!ics.contains("VTIMEZONE"), ics)
     }
 
     @Test

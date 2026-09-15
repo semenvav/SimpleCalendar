@@ -1,0 +1,205 @@
+/*
+ * The classic layout, the first the family saw.
+ *
+ * Every rule is scoped to .layout-classic: a later layout can reuse these class names without
+ * inheriting any of it, and nothing done for a later layout can reach back into this one.
+ * Shared pieces — the event card, the form, buttons, the colour tokens — live in styles.css.
+ */
+
+.layout-classic {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  gap: 12px;
+}
+
+/* --- Toolbar ---------------------------------------------------------------------------- */
+
+.layout-classic .toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.layout-classic .toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.layout-classic .toolbar-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--font-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-classic .nav-group,
+.layout-classic .view-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layout-classic .nav-button,
+.layout-classic .view-button {
+  min-height: var(--touch);
+  min-width: var(--touch);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-base);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.layout-classic .nav-button:active,
+.layout-classic .view-button:active {
+  background: var(--bg);
+}
+
+.layout-classic .nav-button[aria-label='Назад'],
+.layout-classic .nav-button[aria-label='Вперёд'] {
+  font-size: 26px;
+  line-height: 1;
+  padding: 0;
+}
+
+.layout-classic .view-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.layout-classic .nav-button.refresh {
+  font-size: 22px;
+  padding: 0;
+}
+
+.layout-classic .nav-button.refresh:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.layout-classic .nav-button.spinning {
+  animation: spin 900ms linear infinite;
+}
+
+/* --- Calendar legend -------------------------------------------------------------------- */
+
+.layout-classic .legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.layout-classic .legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.layout-classic .legend-chip.off {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+.layout-classic .legend-chip.off .legend-dot {
+  background: transparent;
+  border: 2px solid var(--chip-color, var(--accent));
+}
+
+/* --- Calendar area ---------------------------------------------------------------------- */
+
+.layout-classic .calendar-area {
+  flex: 1;
+  /* Without this a flex child refuses to shrink and the calendar overflows the viewport. */
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px;
+  overflow: hidden;
+}
+
+.layout-classic .two-months {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+}
+
+/*
+ * Two months side by side: each month becomes a card of its own, and the strip of page
+ * background between them is what separates them. The outer card steps aside so the gap shows.
+ */
+.layout-classic .calendar-area.split {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  /* Otherwise the month cards' own shadows get clipped at the edges. */
+  overflow: visible;
+}
+
+.layout-classic .month-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.layout-classic .month-pane-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.layout-classic .month-pane .calendar-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* One column below the width where two months stop being readable. */
+@media (max-width: 900px) {
+  .layout-classic .two-months {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .layout-classic .toolbar-row {
+    flex-wrap: wrap;
+  }
+
+  .layout-classic .toolbar-title {
+    order: -1;
+    width: 100%;
+  }
+}

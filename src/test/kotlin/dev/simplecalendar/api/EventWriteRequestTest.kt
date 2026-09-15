@@ -1,6 +1,10 @@
 package dev.simplecalendar.api
 
+import dev.simplecalendar.ical.EditScope
+import dev.simplecalendar.ical.RepeatChange
 import dev.simplecalendar.model.EventTime
+import dev.simplecalendar.model.Frequency
+import dev.simplecalendar.model.RepeatRule
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -93,6 +97,42 @@ class EventWriteRequestTest {
         assertEquals("Ужин", request(title = "  Ужин  ").toDraft(moscow).title)
     }
 
+    @Test
+    fun `an absent repeat leaves the rule alone and NONE stops it`() {
+        val plain = request()
+        assertEquals(RepeatChange.Keep, plain.repeatChange(plain.toDraft(moscow)))
+
+        val none = request(repeat = RepeatDto("NONE"))
+        assertEquals(RepeatChange.To(null), none.repeatChange(none.toDraft(moscow)))
+    }
+
+    @Test
+    fun `a repeat is read with its interval and last day`() {
+        val weekly = request(repeat = RepeatDto("weekly", interval = 2, until = "2026-12-31"))
+        assertEquals(
+            RepeatChange.To(RepeatRule(Frequency.WEEKLY, 2, LocalDate.of(2026, 12, 31))),
+            weekly.repeatChange(weekly.toDraft(moscow)),
+        )
+    }
+
+    @Test
+    fun `a repeat that ends before the event starts is rejected`() {
+        val backwards = request(repeat = RepeatDto("DAILY", until = "2026-09-01"))
+        val failure = assertFailsWith<IllegalArgumentException> { backwards.repeatChange(backwards.toDraft(moscow)) }
+        assertTrue(failure.message!!.contains("раньше"), failure.message)
+
+        val hourly = request(repeat = RepeatDto("HOURLY"))
+        assertFailsWith<IllegalArgumentException> { hourly.repeatChange(hourly.toDraft(moscow)) }
+    }
+
+    @Test
+    fun `an edit covers the whole event unless the scope says otherwise`() {
+        assertEquals(EditScope.ALL, parseScope(null))
+        assertEquals(EditScope.THIS, parseScope("this"))
+        assertEquals(EditScope.FOLLOWING, parseScope("following"))
+        assertFailsWith<IllegalArgumentException> { parseScope("some") }
+    }
+
     private fun request(
         title: String = "Ужин",
         description: String? = "Торт",
@@ -100,6 +140,7 @@ class EventWriteRequestTest {
         allDay: Boolean = false,
         start: String = "2026-09-15T19:00",
         end: String = "2026-09-15T21:00",
+        repeat: RepeatDto? = null,
     ) = EventWriteRequest(
         calendarId = "mum",
         title = title,
@@ -108,5 +149,6 @@ class EventWriteRequestTest {
         allDay = allDay,
         start = start,
         end = end,
+        repeat = repeat,
     )
 }

@@ -1,9 +1,14 @@
 package dev.simplecalendar.ical
 
+import dev.simplecalendar.model.EventTime
 import net.fortuna.ical4j.data.CalendarBuilder
+import net.fortuna.ical4j.model.Parameter
+import net.fortuna.ical4j.model.ParameterList
 import net.fortuna.ical4j.model.Property
 import net.fortuna.ical4j.model.component.CalendarComponent
 import net.fortuna.ical4j.model.component.VEvent
+import net.fortuna.ical4j.model.parameter.TzId
+import net.fortuna.ical4j.model.parameter.Value
 import net.fortuna.ical4j.model.property.DateListProperty
 import net.fortuna.ical4j.model.property.DateProperty
 import net.fortuna.ical4j.model.property.Duration as DurationProperty
@@ -15,9 +20,14 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.Period
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.time.temporal.Temporal
 import java.time.temporal.TemporalAmount
+
+/** What an event without a SUMMARY is called on screen. */
+internal const val UNTITLED = "(без названия)"
 
 /**
  * A single `.ics` resource split the way RFC 5545 actually structures a recurring event:
@@ -34,10 +44,7 @@ data class ParsedEvent(
     val components: List<VEvent> get() = listOfNotNull(master) + overrides
 
     /** True when the master defines an actual recurrence (RRULE or RDATE). */
-    val isRecurring: Boolean
-        get() = master != null &&
-            (master.getProperties<Property>(Property.RRULE).isNotEmpty() ||
-                master.getProperties<Property>(Property.RDATE).isNotEmpty())
+    val isRecurring: Boolean get() = master?.repeats() == true
 }
 
 object IcsParser {
@@ -107,6 +114,10 @@ fun VEvent.recurrenceDates(): List<Temporal> =
 fun VEvent.exceptionDates(): List<Temporal> =
     getProperties<DateListProperty<Temporal>>(Property.EXDATE).flatMap { it.resolvedDates() }
 
+/** True when the component defines a recurrence of its own (RRULE or RDATE). */
+fun VEvent.repeats(): Boolean =
+    getProperties<Property>(Property.RRULE).isNotEmpty() || getProperties<Property>(Property.RDATE).isNotEmpty()
+
 // --- Time zone resolution ---------------------------------------------------------------------
 //
 // ical4j resolves TZID against a copy of the tz database bundled inside its own jar, and that
@@ -132,9 +143,8 @@ private fun lookupZone(tzid: String): ZoneId? {
     return null
 }
 
-private fun Property.tzidValue(): String? =
-    getParameter<net.fortuna.ical4j.model.Parameter>(net.fortuna.ical4j.model.Parameter.TZID)
-        .orElse(null)?.value
+internal fun Property.tzidValue(): String? =
+    getParameter<Parameter>(Parameter.TZID).orElse(null)?.value
 
 /** Rebinds a floating or zoned value to the zone named by its own TZID parameter. */
 private fun Temporal.reZone(tzid: String?): Temporal {
@@ -147,10 +157,14 @@ private fun Temporal.reZone(tzid: String?): Temporal {
     }
 }
 
-private fun DateProperty<Temporal>.resolvedDate(): Temporal? = date?.reZone(tzidValue())
+internal fun DateProperty<Temporal>.resolvedDate(): Temporal? = date?.reZone(tzidValue())
 
-private fun DateListProperty<Temporal>.resolvedDates(): List<Temporal> =
+internal fun DateListProperty<Temporal>.resolvedDates(): List<Temporal> =
     tzidValue().let { tzid -> dates.map { it.reZone(tzid) } }
+
+/** An RDATE of periods rather than dates — a shape we read around and never rewrite. */
+internal fun Property.isPeriodList(): Boolean =
+    getParameter<Value>(Parameter.VALUE).orElse(null) == Value.PERIOD
 
 /**
  * How long this component lasts, following RFC 5545 defaults.
@@ -211,6 +225,21 @@ fun Temporal.toZonedIn(zone: ZoneId): ZonedDateTime = when (this) {
     else -> throw IllegalArgumentException("Unsupported temporal type: ${this::class.java.name}")
 }
 
+/** The wall-clock reading of [this] in [zone]; a value without a zone of its own already is one. */
+fun Temporal.wallClockIn(zone: ZoneId, household: ZoneId): LocalDateTime = when (this) {
+    is LocalDateTime -> this
+    is LocalDate -> atStartOfDay()
+    else -> toInstantIn(household).atZone(zone).toLocalDateTime()
+}
+
+/** The calendar date of [this] — in its own zone if it has one, otherwise in [household]. */
+fun Temporal.dateIn(household: ZoneId): LocalDate = when (this) {
+    is LocalDate -> this
+    is LocalDateTime -> toLocalDate()
+    is ZonedDateTime -> toLocalDate()
+    else -> toInstantIn(household).atZone(household).toLocalDate()
+}
+
 /**
  * Canonical key used to match a `RECURRENCE-ID` or `EXDATE` against an expanded instance start.
  *
@@ -222,3 +251,111 @@ fun Temporal.toZonedIn(zone: ZoneId): ZonedDateTime = when (this) {
  */
 fun Temporal.recurrenceKey(zone: ZoneId): String =
     if (this is LocalDate) "D:$this" else "T:${toInstantIn(zone).toEpochMilli()}"
+
+/** The typed time range of an instance starting at [start] and lasting [duration]. */
+fun eventTimeOf(start: Temporal, duration: TemporalAmount, zone: ZoneId): EventTime =
+    if (start is LocalDate) {
+        EventTime.AllDay(start, allDayEnd(start, duration))
+    } else {
+        val zoned = start.toZonedIn(zone)
+        EventTime.Timed(zoned, zoned.plus(duration))
+    }
+
+/** All-day events always cover at least one whole day, whatever the source said. */
+private fun allDayEnd(start: LocalDate, duration: TemporalAmount): LocalDate {
+    val end = when (duration) {
+        is Period -> start.plus(duration)
+        is Duration -> start.plusDays(duration.toDays())
+        else -> start.plusDays(1)
+    }
+    return if (end.isAfter(start)) end else start.plusDays(1)
+}
+
+/** How long the event lasts: whole days for all-day, an exact duration otherwise. */
+fun EventTime.length(): TemporalAmount = when (this) {
+    is EventTime.AllDay -> Period.ofDays((endExclusive.toEpochDay() - start.toEpochDay()).toInt())
+    is EventTime.Timed -> Duration.between(start, end)
+}
+
+// --- Instance ids -----------------------------------------------------------------------------
+
+/**
+ * How the API names one instance of a series: `2026-09-14` for an all-day series, the UTC instant
+ * of its start otherwise.
+ *
+ * Unambiguous whatever form the file itself uses, and it reduces to the same [recurrenceKey] as
+ * the instance it came from — which is all the write path needs to find that instance again.
+ */
+fun Temporal.toInstanceId(zone: ZoneId): String =
+    if (this is LocalDate) toString() else toInstantIn(zone).toString()
+
+fun parseInstanceId(raw: String): Temporal =
+    runCatching { LocalDate.parse(raw) }.getOrNull()
+        ?: runCatching { Instant.parse(raw) }.getOrNull()
+        ?: throw IllegalArgumentException("Неверный идентификатор повторения: «$raw».")
+
+// --- How a component writes its times ---------------------------------------------------------
+
+/**
+ * The form a component's date-times are written in, read off its DTSTART.
+ *
+ * Everything else written into the component — DTEND, EXDATE, RDATE, RECURRENCE-ID, an RRULE's
+ * UNTIL — has to follow it. RFC 5545 demands that for several of them, and where it does not,
+ * mixing forms is the classic way for an exception to silently miss the instance it was meant for.
+ */
+sealed interface TimeForm {
+    /** `VALUE=DATE`: an all-day event. */
+    data object Date : TimeForm
+
+    /** Wall-clock text with a `TZID`. [tzid] is written back verbatim; [zone] does the arithmetic. */
+    data class Zoned(val tzid: String, val zone: ZoneId) : TimeForm
+
+    /** `…Z`. */
+    data object Utc : TimeForm
+
+    /** No zone at all — "nine in the morning wherever you are", read in the household zone. */
+    data object Floating : TimeForm
+}
+
+fun VEvent.timeForm(): TimeForm? {
+    val property = getProperty<DateProperty<Temporal>>(Property.DTSTART).orElse(null) ?: return null
+    val tzid = property.tzidValue()
+    return when (val start = property.resolvedDate()) {
+        null -> null
+        is LocalDate -> TimeForm.Date
+        is LocalDateTime -> TimeForm.Floating
+        is ZonedDateTime -> if (tzid != null) TimeForm.Zoned(tzid, start.zone) else TimeForm.Utc
+        else -> TimeForm.Utc
+    }
+}
+
+internal val DATE_TEXT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
+internal val LOCAL_TEXT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
+internal val UTC_TEXT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+
+/**
+ * The parameters and literal text [value] takes when written in this form.
+ *
+ * Literal text rather than a Temporal handed to ical4j: ical4j formats zoned values through its
+ * own tz table, the stale one described above, and would shift them by the difference.
+ * [household] places values that carry no zone of their own.
+ */
+fun TimeForm.render(value: Temporal, household: ZoneId): Pair<ParameterList, String> = when (this) {
+    TimeForm.Date -> ParameterList(listOf(Value.DATE)) to value.dateIn(household).format(DATE_TEXT)
+    is TimeForm.Zoned -> ParameterList(listOf(TzId(tzid))) to value.wallClockIn(zone, household).format(LOCAL_TEXT)
+    TimeForm.Utc -> ParameterList() to UTC_TEXT.format(value.toInstantIn(household))
+    TimeForm.Floating -> ParameterList() to value.wallClockIn(household, household).format(LOCAL_TEXT)
+}
+
+/**
+ * [value] as an RRULE's UNTIL on a series written in this form.
+ *
+ * UNTIL follows DTSTART's form with one exception: a zoned DTSTART takes it in UTC
+ * (RFC 5545 §3.3.10).
+ */
+fun TimeForm.untilText(value: Temporal, household: ZoneId): String = when (this) {
+    TimeForm.Date -> value.dateIn(household).format(DATE_TEXT)
+    TimeForm.Floating -> value.wallClockIn(household, household).format(LOCAL_TEXT)
+    is TimeForm.Zoned, TimeForm.Utc -> UTC_TEXT.format(value.toInstantIn(household))
+}
