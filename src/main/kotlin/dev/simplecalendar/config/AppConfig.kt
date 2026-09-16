@@ -1,5 +1,6 @@
 package dev.simplecalendar.config
 
+import dev.simplecalendar.net.ProxySettings
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.ZoneId
@@ -34,61 +35,41 @@ data class AppConfig(
     val caldav: CalDavConfig?,
     /** Allow cross-origin calls from the Vite dev server. Never enable in production. */
     val devCors: Boolean,
+    /** How outgoing requests reach the outside: `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`. */
+    val proxy: ProxySettings,
+    /** The settings themselves, for integrations: each reads its own, see `integrations/`. */
+    val env: Env,
 ) {
     companion object {
-        fun fromEnv(env: (String) -> String? = { System.getenv(it) }): AppConfig {
-            // Real environment variables win; a .env file in the working directory fills the gaps,
-            // so `./gradlew run` picks up the same settings docker compose uses.
-            val dotEnv = loadDotEnv(Path(".env"))
-            fun str(name: String): String? = (env(name) ?: dotEnv[name])?.trim()?.takeIf { it.isNotEmpty() }
-
-            val caldav = str("SC_CALDAV_URL")?.let { url ->
+        fun fromEnv(env: Env = Env.system()): AppConfig {
+            val caldav = env.string("SC_CALDAV_URL")?.let { url ->
                 CalDavConfig(
                     baseUrl = url,
-                    username = str("SC_CALDAV_USERNAME")
-                        ?: error("SC_CALDAV_URL is set but SC_CALDAV_USERNAME is missing"),
-                    password = str("SC_CALDAV_PASSWORD")
-                        ?: error("SC_CALDAV_URL is set but SC_CALDAV_PASSWORD is missing"),
+                    username = env.required("SC_CALDAV_USERNAME", because = "SC_CALDAV_URL is set"),
+                    password = env.required("SC_CALDAV_PASSWORD", because = "SC_CALDAV_URL is set"),
                 )
             }
 
-            val dataDir = Path(str("SC_DATA_DIR") ?: "data").toAbsolutePath().normalize()
+            val dataDir = Path(env.string("SC_DATA_DIR") ?: "data").toAbsolutePath().normalize()
             Files.createDirectories(dataDir)
 
             // Absent or non-existent static dir means "running in dev, Vite serves the UI".
-            val staticDir = str("SC_STATIC_DIR")
+            val staticDir = env.string("SC_STATIC_DIR")
                 ?.let { Path(it).toAbsolutePath().normalize() }
                 ?.takeIf { Files.isDirectory(it) }
 
             return AppConfig(
-                host = str("SC_HOST") ?: "0.0.0.0",
-                port = str("SC_PORT")?.toIntOrNull() ?: 8080,
+                host = env.string("SC_HOST") ?: "0.0.0.0",
+                port = env.string("SC_PORT")?.toIntOrNull() ?: 8080,
                 dataDir = dataDir,
                 staticDir = staticDir,
-                timeZone = str("SC_TIMEZONE")?.let(ZoneId::of) ?: ZoneId.systemDefault(),
-                syncIntervalSeconds = str("SC_SYNC_INTERVAL_SECONDS")?.toLongOrNull() ?: 60L,
+                timeZone = env.string("SC_TIMEZONE")?.let(ZoneId::of) ?: ZoneId.systemDefault(),
+                syncIntervalSeconds = env.string("SC_SYNC_INTERVAL_SECONDS")?.toLongOrNull() ?: 60L,
                 caldav = caldav,
-                devCors = str("SC_DEV_CORS")?.toBooleanStrictOrNull() ?: false,
+                devCors = env.string("SC_DEV_CORS")?.toBooleanStrictOrNull() ?: false,
+                proxy = ProxySettings.from(env),
+                env = env,
             )
-        }
-
-        /** Minimal `KEY=value` reader: comments, blank lines and surrounding quotes, nothing more. */
-        private fun loadDotEnv(path: Path): Map<String, String> {
-            if (!Files.isRegularFile(path)) return emptyMap()
-            return Files.readAllLines(path, Charsets.UTF_8)
-                .asSequence()
-                .map(String::trim)
-                .filter { it.isNotEmpty() && !it.startsWith("#") }
-                .mapNotNull { line ->
-                    val separator = line.indexOf('=')
-                    if (separator <= 0) return@mapNotNull null
-                    val key = line.take(separator).trim()
-                    val value = line.substring(separator + 1).trim()
-                        .removeSurrounding("\"")
-                        .removeSurrounding("'")
-                    key to value
-                }
-                .toMap()
         }
     }
 }

@@ -40,6 +40,9 @@ class ForbiddenException(message: String) : RuntimeException(message)
  */
 class NotSupportedException(message: String) : RuntimeException(message)
 
+/** Thrown when a service we depend on — Immich, Home Assistant, a weather API — failed us. */
+class UpstreamException(message: String) : RuntimeException(message)
+
 fun Application.installPlugins(config: AppConfig) {
     install(ContentNegotiation) {
         json(Json {
@@ -86,6 +89,9 @@ fun Application.installPlugins(config: AppConfig) {
                 HttpStatusCode.UnprocessableEntity,
                 ApiError("not_supported", cause.message ?: "Not supported yet"),
             )
+        }
+        exception<UpstreamException> { call, cause ->
+            call.respond(HttpStatusCode.BadGateway, ApiError("upstream", cause.message ?: "Upstream failed"))
         }
         exception<BadRequestException> { call, cause ->
             call.respond(HttpStatusCode.BadRequest, ApiError("bad_request", cause.message ?: "Bad request"))

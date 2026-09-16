@@ -145,6 +145,8 @@ fun Application.installRoutes(components: AppComponents) {
                 sync.syncAll()
                 call.respond(sync.status().toDto())
             }
+
+            integrationRoutes(components.integrations)
         }
 
         // In production the frontend is baked into the image and served from here. In development

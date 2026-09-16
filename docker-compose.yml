@@ -20,10 +20,26 @@ services:
       SC_TIMEZONE: ${SC_TIMEZONE:-Asia/Jerusalem}
       SC_SYNC_INTERVAL_SECONDS: ${SC_SYNC_INTERVAL_SECONDS:-60}
       SC_LOG_LEVEL: ${SC_LOG_LEVEL:-INFO}
+      # --- Outgoing traffic: empty means direct ---
+      # Like every variable here, a value set in the shell running `docker compose` beats .env.
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+      # --- Integrations: each stays off until its settings are filled in ---
+      SC_WEATHER_LATITUDE: ${SC_WEATHER_LATITUDE:-}
+      SC_WEATHER_LONGITUDE: ${SC_WEATHER_LONGITUDE:-}
+      SC_HA_URL: ${SC_HA_URL:-}
+      SC_HA_TOKEN: ${SC_HA_TOKEN:-}
+      SC_HA_ENTITIES: ${SC_HA_ENTITIES:-}
+      SC_IMMICH_URL: ${SC_IMMICH_URL:-}
+      SC_IMMICH_API_KEY: ${SC_IMMICH_API_KEY:-}
+      SC_IMMICH_ALBUMS: ${SC_IMMICH_ALBUMS:-}
     volumes:
       # Only a cache plus your calendar names and colours: the events themselves live in Baikal,
       # so losing this volume costs a resync and the local customisations, nothing more.
       - data:/data
+    # More networks — the one Squid is on, Home Assistant's, Immich's — go in a
+    # docker-compose.override.yml next to this file, which compose merges in by itself.
     networks:
       - traefik
     labels:

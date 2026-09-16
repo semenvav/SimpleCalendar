@@ -100,7 +100,7 @@ export function EventForm({
               type="text"
               value={values.title}
               onChange={(e) => set('title', e.target.value)}
-              placeholder="Например, ужин у бабушки"
+              placeholder="Название события"
               autoFocus
               required
             />

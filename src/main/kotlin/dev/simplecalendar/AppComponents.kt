@@ -3,6 +3,10 @@ package dev.simplecalendar
 import dev.simplecalendar.caldav.CalDavClient
 import dev.simplecalendar.config.AppConfig
 import dev.simplecalendar.ical.EventExpander
+import dev.simplecalendar.integrations.IntegrationContext
+import dev.simplecalendar.integrations.IntegrationHub
+import dev.simplecalendar.integrations.configuredIntegrations
+import dev.simplecalendar.integrations.integrationHttpClient
 import dev.simplecalendar.service.EventQueryService
 import dev.simplecalendar.service.EventWriteService
 import dev.simplecalendar.store.CalendarRepository
@@ -56,12 +60,22 @@ class AppComponents(val config: AppConfig) : AutoCloseable {
         )
     }
 
+    /** Integrations share one client with each other, not with CalDAV and its authentication. */
+    private val integrationHttp = integrationHttpClient()
+
+    val integrations = IntegrationHub(
+        configuredIntegrations(IntegrationContext(config.env, integrationHttp, config.timeZone)),
+    )
+
     fun start() {
         sync?.start()
+        integrations.start()
     }
 
     override fun close() {
         sync?.stop()
+        integrations.close()
+        integrationHttp.close()
         caldav?.close()
         database.close()
     }
