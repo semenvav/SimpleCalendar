@@ -16,9 +16,10 @@ FROM eclipse-temurin:21-jdk AS backend
 WORKDIR /build
 
 # Same trick: resolve dependencies against the build files alone before copying sources.
+# VERSION comes along because build.gradle.kts reads it — it is a build file like the others.
 COPY gradlew ./
 COPY gradle ./gradle
-COPY settings.gradle.kts build.gradle.kts ./
+COPY settings.gradle.kts build.gradle.kts VERSION ./
 RUN chmod +x gradlew && ./gradlew --no-daemon dependencies --quiet || true
 
 COPY src ./src
