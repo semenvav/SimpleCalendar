@@ -1,5 +1,6 @@
 package dev.simplecalendar.ical
 
+import dev.simplecalendar.model.EventMark
 import dev.simplecalendar.model.EventTime
 import dev.simplecalendar.model.RepeatRule
 import dev.simplecalendar.model.isAllDay
@@ -97,6 +98,45 @@ class SeriesEditor(private val zone: ZoneId, private val expander: EventExpander
         return SeriesChange(updated = render(series))
     }
 
+    /**
+     * Puts a hand-made mark on an occurrence — cancelled, moved — or takes it off again.
+     *
+     * Nothing about when the event happens changes, which is why "this and following" is not on
+     * offer: splitting a series into two resources for the sake of a colour would be a real
+     * change to the calendar made for a cosmetic reason. One instance, or the whole series.
+     */
+    fun mark(ics: String, instanceId: String?, scope: EditScope, mark: EventMark?): SeriesChange {
+        require(scope != EditScope.FOLLOWING) {
+            "Отметку можно поставить на одно событие или на всю серию."
+        }
+        val series = parse(ics)
+        val master = series.master
+        val instance = instanceId?.let(::parseInstanceId)
+
+        when {
+            master == null -> {
+                val key = instance?.recurrenceKey(zone)
+                val target = series.overrides.firstOrNull { key == null || it.slotKey() == key }
+                    ?: throw NoSuchInstanceException(GONE)
+                applyMark(target, mark)
+            }
+            !master.repeats() -> applyMark(master, mark)
+            scope == EditScope.THIS && instance != null -> {
+                requireInstance(series, instance)
+                val target = series.overrideFor(instance)
+                    ?: newOverride(master, instance).also { series.overrides += it }
+                applyMark(target, mark)
+            }
+            // The whole series: the master, and every instance that already stands apart from it —
+            // an override left unmarked would be the one entry on the wall still looking ordinary.
+            else -> {
+                applyMark(master, mark)
+                series.overrides.forEach { applyMark(it, mark) }
+            }
+        }
+        return SeriesChange(updated = render(series))
+    }
+
     fun delete(ics: String, instanceId: String?, scope: EditScope): SeriesChange {
         val instance = instanceId?.let(::parseInstanceId)
         if (instance == null || scope == EditScope.ALL) return SeriesChange(updated = null)
@@ -128,6 +168,11 @@ class SeriesEditor(private val zone: ZoneId, private val expander: EventExpander
     }
 
     // --- edits --------------------------------------------------------------------------------
+
+    private fun applyMark(event: VEvent, mark: EventMark?) {
+        IcsWriter.setMark(event, mark)
+        IcsWriter.bumpRevision(event)
+    }
 
     private fun editOrphan(series: Series, instance: Temporal?, draft: EventDraft) {
         val key = instance?.recurrenceKey(zone)
@@ -409,12 +454,19 @@ class SeriesEditor(private val zone: ZoneId, private val expander: EventExpander
     private fun changesRule(master: VEvent, change: RepeatChange): Boolean =
         change is RepeatChange.To && (change.rule == null || change.rule != expander.repeatOf(master))
 
-    /** A copy of the master standing in for the one instance in [instance]'s slot. */
+    /**
+     * A copy of the master standing in for the one instance in [instance]'s slot.
+     *
+     * It starts out saying exactly what the series says for that slot — the master's own DTSTART
+     * would put it on the day the series began. An edit overwrites the times straight afterwards;
+     * a mark leaves them, and has to find them right.
+     */
     private fun newOverride(master: VEvent, instance: Temporal): VEvent {
         val override = master.copy()
         for (name in SERIES_ONLY) override.clearProperty(name)
         val form = master.timeForm() ?: TimeForm.Utc
         override.setProperty(IcsWriter.dateProperty(Property.RECURRENCE_ID, instance, form, zone))
+        IcsWriter.writeTimes(override, eventTimeOf(instance, master.duration(), zone), form, zone)
         return override
     }
 

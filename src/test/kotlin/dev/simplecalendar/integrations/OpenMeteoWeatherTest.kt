@@ -1,7 +1,9 @@
 package dev.simplecalendar.integrations
 
-import dev.simplecalendar.integrations.weather.WeatherIntegration
+import dev.simplecalendar.integrations.weather.OpenMeteoWeather
+import dev.simplecalendar.integrations.weather.OpenWeatherMapWeather
 import dev.simplecalendar.integrations.weather.condition
+import dev.simplecalendar.integrations.weather.weatherIntegration
 import dev.simplecalendar.plugins.UpstreamException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -12,11 +14,12 @@ import java.net.URLDecoder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class WeatherIntegrationTest {
+class OpenMeteoWeatherTest {
 
     @Test
     fun `reads Open-Meteo's forecast into days and current conditions`() {
@@ -29,7 +32,7 @@ class WeatherIntegrationTest {
                 }
             },
         ) { baseUrl, context ->
-            val weather = WeatherIntegration(context.http, 52.52, 13.41, context.zone, baseUrl).fetch()
+            val weather = OpenMeteoWeather(context.http, 52.52, 13.41, context.zone, baseUrl).fetch()
 
             assertTrue("latitude=52.52" in query && "longitude=13.41" in query, query)
             assertTrue("timezone=Asia/Jerusalem" in query, "days must be household days: $query")
@@ -50,10 +53,12 @@ class WeatherIntegrationTest {
                 assertEquals("sunny", condition, "daily conditions are always the daytime ones")
                 assertEquals(31.2, temperatureMax)
                 assertEquals(22.5, temperatureMin)
+                assertEquals(64, humidity)
                 assertEquals(0, precipitationProbability)
             }
             assertEquals(listOf("sunny", "pouring", "hail"), weather.days.take(3).map { it.condition })
             assertNull(weather.days.last().precipitationProbability, "Open-Meteo sends null far ahead")
+            assertNull(weather.days.last().humidity)
         }
     }
 
@@ -71,7 +76,7 @@ class WeatherIntegrationTest {
             },
         ) { baseUrl, context ->
             val error = assertFailsWith<UpstreamException> {
-                WeatherIntegration(context.http, 1.0, 1.0, context.zone, baseUrl).fetch()
+                OpenMeteoWeather(context.http, 1.0, 1.0, context.zone, baseUrl).fetch()
             }
             assertTrue("400" in error.message.orEmpty() && "Latitude must be" in error.message.orEmpty(), error.message)
         }
@@ -86,16 +91,23 @@ class WeatherIntegrationTest {
 
     @Test
     fun `settings`() {
-        assertNull(WeatherIntegration.fromEnv(contextWith()))
-        assertNotNull(WeatherIntegration.fromEnv(contextWith("SC_WEATHER_LATITUDE" to "32.08", "SC_WEATHER_LONGITUDE" to "34.78")))
+        assertNull(weatherIntegration(contextWith()))
 
-        assertFailsWith<IllegalArgumentException> { WeatherIntegration.fromEnv(contextWith("SC_WEATHER_LATITUDE" to "32.08")) }
+        val coordinates = arrayOf("SC_WEATHER_LATITUDE" to "32.08", "SC_WEATHER_LONGITUDE" to "34.78")
+        assertIs<OpenMeteoWeather>(weatherIntegration(contextWith(*coordinates)), "no key means no account needed")
+
+        // A key is the whole of the choice; both providers serve the same `/api/integrations/weather`.
+        val withKey = assertNotNull(weatherIntegration(contextWith(*coordinates, "SC_OWM_API_KEY" to "k")))
+        assertIs<OpenWeatherMapWeather>(withKey)
+        assertEquals("weather", withKey.id)
+
+        assertFailsWith<IllegalArgumentException> { weatherIntegration(contextWith("SC_WEATHER_LATITUDE" to "32.08")) }
         assertFailsWith<IllegalArgumentException> {
-            WeatherIntegration.fromEnv(contextWith("SC_WEATHER_LATITUDE" to "132", "SC_WEATHER_LONGITUDE" to "34"))
+            weatherIntegration(contextWith("SC_WEATHER_LATITUDE" to "132", "SC_WEATHER_LONGITUDE" to "34"))
         }
         // Coordinates copied with a comma decimal separator are a mistake, not a zero.
         assertFailsWith<IllegalStateException> {
-            WeatherIntegration.fromEnv(contextWith("SC_WEATHER_LATITUDE" to "32,08", "SC_WEATHER_LONGITUDE" to "34.78"))
+            weatherIntegration(contextWith("SC_WEATHER_LATITUDE" to "32,08", "SC_WEATHER_LONGITUDE" to "34.78"))
         }
     }
 }

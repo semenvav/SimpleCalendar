@@ -1,0 +1,305 @@
+/*
+ * The layout with the house in its toolbar: sensors, the period, the weather across the top, and
+ * the hand-made marks on the entries below.
+ *
+ * Every rule is scoped to .layout-integration, so nothing here can reach «Классика» and nothing
+ * there can reach this. Shared pieces — the event card, the form, buttons, the colour tokens —
+ * live in styles.css.
+ */
+
+.layout-integration {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  gap: 12px;
+}
+
+/* --- Toolbar ---------------------------------------------------------------------------- */
+
+.layout-integration .toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+/*
+ * Three columns, the middle one taking whatever is left. The navigation and the views keep their
+ * natural width at the edges, so the title stays put as the months change under it instead of
+ * sliding about with the length of their names.
+ */
+.layout-integration .toolbar-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.layout-integration .toolbar-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* Sensors — period — weather. The title takes the middle, the strips sit against the edges. */
+.layout-integration .toolbar-middle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  min-width: 0;
+}
+
+.layout-integration .toolbar-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--font-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-integration .nav-group,
+.layout-integration .view-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layout-integration .nav-button,
+.layout-integration .view-button {
+  min-height: var(--touch);
+  min-width: var(--touch);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-base);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.layout-integration .nav-button:active,
+.layout-integration .view-button:active {
+  background: var(--bg);
+}
+
+.layout-integration .nav-button[aria-label='Назад'],
+.layout-integration .nav-button[aria-label='Вперёд'] {
+  font-size: 26px;
+  line-height: 1;
+  padding: 0;
+}
+
+.layout-integration .view-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.layout-integration .nav-button.refresh {
+  font-size: 22px;
+  padding: 0;
+}
+
+.layout-integration .nav-button.refresh:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.layout-integration .nav-button.spinning {
+  animation: spin 900ms linear infinite;
+}
+
+/* --- Sensor and weather strips ----------------------------------------------------------- */
+
+/*
+ * A line per reading, stacked. No card, no border: they are part of the same glance as the
+ * month's name, and a box around them would make them look like something to act on.
+ */
+.layout-integration .strip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 0;
+  font-size: 19px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.layout-integration .strip-line {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-integration .strip-name {
+  color: var(--text-muted);
+}
+
+/* --- Calendar legend -------------------------------------------------------------------- */
+
+.layout-integration .legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.layout-integration .legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.layout-integration .legend-chip.off {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+.layout-integration .legend-chip.off .legend-dot {
+  background: transparent;
+  border: 2px solid var(--chip-color, var(--accent));
+}
+
+/* --- Marks: cancelled, moved -------------------------------------------------------------- */
+
+/*
+ * A marked entry is split down the middle: the calendar's colour on the left, exactly as it was,
+ * and on the right the colour of what happened to it.
+ *
+ * Painted as a background image over the background colour Event Calendar sets inline, so the
+ * library still owns the entry and we add one layer on top. `--mark-color` and `--mark-shadow`
+ * come with the event itself (see calendar/adapter.ts).
+ */
+.layout-integration .ec-event.event-marked {
+  background-image: linear-gradient(90deg, transparent 0 50%, var(--mark-color) 50% 100%);
+  /* The title crosses both halves; the shadow is what keeps it readable over the far one. */
+  text-shadow: 0 0 3px var(--mark-shadow);
+}
+
+/*
+ * In the list view the row is white and the calendar's colour is a tag down its side, so the
+ * split goes there instead — across the row it would drown the text it sits behind.
+ */
+.layout-integration .ec-list .ec-event.event-marked {
+  background-image: none;
+  text-shadow: none;
+}
+
+.layout-integration .ec-list .ec-event.event-marked .ec-event-tag {
+  background-image: linear-gradient(180deg, transparent 0 50%, var(--mark-color) 50% 100%);
+}
+
+/* --- Calendar area ---------------------------------------------------------------------- */
+
+.layout-integration .calendar-area {
+  flex: 1;
+  /* Without this a flex child refuses to shrink and the calendar overflows the viewport. */
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px;
+  overflow: hidden;
+}
+
+.layout-integration .two-months {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+}
+
+/*
+ * Two months side by side: each month becomes a card of its own, and the strip of page
+ * background between them is what separates them. The outer card steps aside so the gap shows.
+ */
+.layout-integration .calendar-area.split {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  /* Otherwise the month cards' own shadows get clipped at the edges. */
+  overflow: visible;
+}
+
+.layout-integration .month-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.layout-integration .month-pane-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.layout-integration .month-pane .calendar-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Narrower than a tablet in landscape: the strips go under the title rather than beside it. */
+@media (max-width: 1400px) {
+  .layout-integration .toolbar-middle {
+    flex-wrap: wrap;
+    gap: 8px 20px;
+  }
+
+  .layout-integration .toolbar-title {
+    order: -1;
+    flex: 1 0 100%;
+  }
+
+  .layout-integration .strip {
+    font-size: 17px;
+  }
+}
+
+/* One column below the width where two months stop being readable. */
+@media (max-width: 900px) {
+  .layout-integration .two-months {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .layout-integration .toolbar-row {
+    grid-template-columns: 1fr;
+  }
+
+  /*
+   * On a phone the buttons do not fit one row. Left unwrapped they made the page wider than the
+   * screen, and every dialog — sized to the page — ran off its edge.
+   */
+  .layout-integration .nav-group,
+  .layout-integration .view-group {
+    flex-wrap: wrap;
+  }
+}

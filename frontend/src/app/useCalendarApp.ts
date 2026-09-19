@@ -6,11 +6,12 @@ import {
   fetchCalendars,
   fetchEvents,
   fetchHealth,
+  markEvent,
   triggerSync,
   updateEvent,
   type EventWriteRequest,
 } from '../api/client'
-import type { EditScope, EventDto, HealthDto } from '../api/types'
+import type { EditScope, EventDto, EventMark, HealthDto } from '../api/types'
 import { toCalendarEvents, type EventDetailsData } from '../calendar/adapter'
 import { parseLocal, toIsoDate } from '../lib/dates'
 import { recall, remember } from '../lib/persist'
@@ -34,6 +35,7 @@ export interface Editing {
 export type Question =
   | { kind: 'save'; event: EventDto; body: EventWriteRequest }
   | { kind: 'delete'; event: EventDto }
+  | { kind: 'mark'; event: EventDto; mark: EventMark | null }
 
 export interface CalendarAppOptions {
   /** The views this layout offers. */
@@ -42,6 +44,12 @@ export interface CalendarAppOptions {
   defaultView: ViewId
   /** Where the device remembers its view in this layout. */
   viewKey: string
+  /**
+   * Whether this layout offers the hand-made marks — cancelled, moved. Off by default: a layout
+   * that does not offer them must not show them either, so nothing about a marked event reaches
+   * it and a frozen layout stays exactly as it was.
+   */
+  marks?: boolean
 }
 
 /**
@@ -56,7 +64,7 @@ const initialAnchor = (): Date => {
   return stored && /^\d{4}-\d{2}-\d{2}$/.test(stored) ? parseLocal(stored) : new Date()
 }
 
-export function useCalendarApp({ views, defaultView, viewKey }: CalendarAppOptions) {
+export function useCalendarApp({ views, defaultView, viewKey, marks = false }: CalendarAppOptions) {
   const queryClient = useQueryClient()
 
   // The display format is a preference of the device, so it outlives the tab.
@@ -125,14 +133,26 @@ export function useCalendarApp({ views, defaultView, viewKey }: CalendarAppOptio
     onError,
   })
 
+  const mark = useMutation({
+    mutationFn: ({ id, value, scope }: { id: string; value: EventMark | null; scope?: EditScope }) =>
+      markEvent(id, value, scope),
+    onSuccess: afterWrite,
+    onError,
+  })
+
   const calendarList = useMemo(
     () => (calendars.data ?? []).filter((c) => c.visible),
     [calendars.data],
   )
 
   const calendarEvents = useMemo(
-    () => toCalendarEvents((events.data ?? []).filter((e) => !hidden.has(e.calendarId)), calendarList),
-    [events.data, calendarList, hidden],
+    () =>
+      toCalendarEvents(
+        (events.data ?? []).filter((e) => !hidden.has(e.calendarId)),
+        calendarList,
+        marks,
+      ),
+    [events.data, calendarList, hidden, marks],
   )
 
   const canWrite = calendarList.some((c) => !c.readOnly) && health.data?.sync.configured === true
@@ -145,9 +165,10 @@ export function useCalendarApp({ views, defaultView, viewKey }: CalendarAppOptio
     events: calendarEvents,
     hidden,
     canWrite,
-    writing: create.isPending || update.isPending || remove.isPending,
+    marks,
+    writing: create.isPending || update.isPending || remove.isPending || mark.isPending,
     syncing: sync.isPending,
-    notice: describeProblem(health.data, events.error, calendars.error, remove.error),
+    notice: describeProblem(health.data, events.error, calendars.error, remove.error, mark.error),
     formError: errorMessage(create.error ?? update.error),
     selected,
     editing,
@@ -191,9 +212,24 @@ export function useCalendarApp({ views, defaultView, viewKey }: CalendarAppOptio
       else update.mutate({ id: event.id, body })
     },
     requestDelete: (event: EventDto) => setQuestion({ kind: 'delete', event }),
+
+    /**
+     * Marks the opened event, or takes the mark off when the same one is tapped again.
+     *
+     * Nothing moves: the mark is the whole of the change. A repeating event first asks whether
+     * this is about the one day or the whole series — never «and the following», which would
+     * split the series in two for the sake of a colour.
+     */
+    setMark: (event: EventDto, wanted: EventMark) => {
+      const value = event.mark === wanted ? null : wanted
+      if (event.recurring) setQuestion({ kind: 'mark', event, mark: value })
+      else mark.mutate({ id: event.id, value })
+    },
+
     answer: (scope: EditScope) => {
       if (question?.kind === 'save') update.mutate({ id: question.event.id, body: question.body, scope })
       else if (question?.kind === 'delete') remove.mutate({ id: question.event.id, scope })
+      else if (question?.kind === 'mark') mark.mutate({ id: question.event.id, value: question.mark, scope })
     },
     dismissQuestion: () => setQuestion(null),
   }

@@ -28,9 +28,11 @@ services:
       # --- Integrations: each stays off until its settings are filled in ---
       SC_WEATHER_LATITUDE: ${SC_WEATHER_LATITUDE:-}
       SC_WEATHER_LONGITUDE: ${SC_WEATHER_LONGITUDE:-}
+      SC_OWM_API_KEY: ${SC_OWM_API_KEY:-}
       SC_HA_URL: ${SC_HA_URL:-}
       SC_HA_TOKEN: ${SC_HA_TOKEN:-}
       SC_HA_ENTITIES: ${SC_HA_ENTITIES:-}
+      SC_HA_SENSORS: ${SC_HA_SENSORS:-}
       SC_IMMICH_URL: ${SC_IMMICH_URL:-}
       SC_IMMICH_API_KEY: ${SC_IMMICH_API_KEY:-}
       SC_IMMICH_ALBUMS: ${SC_IMMICH_ALBUMS:-}

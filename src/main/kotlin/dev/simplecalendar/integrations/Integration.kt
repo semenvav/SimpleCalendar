@@ -3,7 +3,7 @@ package dev.simplecalendar.integrations
 import dev.simplecalendar.config.Env
 import dev.simplecalendar.integrations.homeassistant.HomeAssistantIntegration
 import dev.simplecalendar.integrations.immich.ImmichIntegration
-import dev.simplecalendar.integrations.weather.WeatherIntegration
+import dev.simplecalendar.integrations.weather.weatherIntegration
 import dev.simplecalendar.plugins.UpstreamException
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -62,7 +62,7 @@ class IntegrationContext(
  * snapshot endpoint come from [IntegrationHub] for free.
  */
 private val FACTORIES: List<(IntegrationContext) -> Integration<*>?> = listOf(
-    { WeatherIntegration.fromEnv(it) },
+    { weatherIntegration(it) },
     { HomeAssistantIntegration.fromEnv(it) },
     { ImmichIntegration.fromEnv(it) },
 )

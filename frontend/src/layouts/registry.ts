@@ -1,4 +1,5 @@
 import { ClassicLayout } from './classic/ClassicLayout'
+import { IntegrationLayout } from './integration/IntegrationLayout'
 import type { LayoutDefinition } from './types'
 
 /**
@@ -15,6 +16,12 @@ export const LAYOUTS: readonly LayoutDefinition[] = [
     name: 'Классика',
     description: 'Первая версия: навигация и виды сверху, календари строкой под ними.',
     Component: ClassicLayout,
+  },
+  {
+    id: 'integration',
+    name: 'С датчиками',
+    description: 'Два месяца, датчики и погода в панели, отметки «отменено» и «перенесено».',
+    Component: IntegrationLayout,
   },
 ]
 

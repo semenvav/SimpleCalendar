@@ -25,6 +25,11 @@ data class CalDavConfig(
  * first `docker compose up` from failing in a confusing way.
  */
 data class AppConfig(
+    /**
+     * Which build this is, as `/api/health` reports it: the numbered tag of the image, `0.5.7`.
+     * Baked in by the Dockerfile; outside a container there is no published build, hence `dev`.
+     */
+    val version: String,
     val host: String,
     val port: Int,
     val dataDir: Path,
@@ -59,6 +64,7 @@ data class AppConfig(
                 ?.takeIf { Files.isDirectory(it) }
 
             return AppConfig(
+                version = env.string("SC_VERSION") ?: "dev",
                 host = env.string("SC_HOST") ?: "0.0.0.0",
                 port = env.string("SC_PORT")?.toIntOrNull() ?: 8080,
                 dataDir = dataDir,

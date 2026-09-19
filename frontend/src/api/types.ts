@@ -23,6 +23,12 @@ export interface RepeatDto {
 /** How much of a repeating series an edit or a delete covers. */
 export type EditScope = 'this' | 'following' | 'all'
 
+/**
+ * A hand-made note on one occurrence: it is not happening as written, but the record of it stays
+ * on the calendar. Nothing else follows from it — see `lib/marks.ts` for how it is shown.
+ */
+export type EventMark = 'cancelled' | 'moved'
+
 export interface EventDto {
   id: string
   calendarId: string
@@ -39,6 +45,8 @@ export interface EventDto {
   recurring: boolean
   /** The series' rule when the form can show it; absent for single events and richer rules. */
   repeat?: RepeatDto
+  /** Set when somebody marked this occurrence cancelled or moved. */
+  mark?: EventMark
   readOnly: boolean
 }
 
@@ -56,4 +64,50 @@ export interface HealthDto {
   version: string
   timeZone: string
   sync: SyncStatusDto
+}
+
+// --- Integrations ------------------------------------------------------------------------------
+//
+// Only the parts a layout actually shows. Each integration sends more (see
+// `src/main/kotlin/dev/simplecalendar/integrations/`); adding a field here is enough to use it.
+
+/** Whatever provider is configured, the shape is the same — see `weather/Weather.kt`. */
+export interface WeatherNow {
+  /** Household wall-clock time the reading is for, `2026-09-16T11:45`. */
+  time: string
+  condition: string | null
+  temperature: number | null
+  feelsLike: number | null
+  humidity: number | null
+  windSpeed: number | null
+}
+
+export interface WeatherDay {
+  /** `YYYY-MM-DD`, a day in the household zone. */
+  date: string
+  condition: string | null
+  temperatureMax: number | null
+  temperatureMin: number | null
+  /** Mean relative humidity over the day, 0–100. */
+  humidity: number | null
+  precipitationProbability: number | null
+}
+
+export interface Weather {
+  current: WeatherNow
+  /** Today first. How far ahead depends on the provider. */
+  days: WeatherDay[]
+}
+
+/** One place in the house and its two numbers, as `SC_HA_SENSORS` pairs them up. */
+export interface SensorReading {
+  name: string
+  temperature: number | null
+  temperatureUnit: string | null
+  humidity: number | null
+  humidityUnit: string | null
+}
+
+export interface HomeAssistantStates {
+  sensors: SensorReading[]
 }

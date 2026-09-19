@@ -34,6 +34,20 @@ fun EventTime.endInstant(zone: ZoneId): Instant = when (this) {
 
 val EventTime.isAllDay: Boolean get() = this is EventTime.AllDay
 
+/**
+ * A hand-made note on an occurrence: it did not happen as written, but the record of it stays.
+ *
+ * Nothing else follows from it — the event keeps its day, its hour and its place in the series.
+ * It is the family's own bookkeeping, shown as a second colour on the entry.
+ */
+enum class EventMark {
+    /** It is not happening at all. */
+    CANCELLED,
+
+    /** It is moving; when it moves to is agreed elsewhere, and set by editing the event. */
+    MOVED,
+}
+
 /** How often a simple repetition comes round. */
 enum class Frequency { DAILY, WEEKLY, MONTHLY, YEARLY }
 
@@ -121,6 +135,8 @@ data class Occurrence(
     val description: String?,
     val location: String?,
     val status: String?,
+    /** Cancelled or moved by hand, see [EventMark]; `null` for an ordinary occurrence. */
+    val mark: EventMark?,
     val recurring: Boolean,
     /** The series' rule when the form can show it; `null` for single events and richer rules. */
     val repeat: RepeatRule? = null,

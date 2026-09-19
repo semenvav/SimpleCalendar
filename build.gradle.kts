@@ -5,7 +5,12 @@ plugins {
 }
 
 group = "dev.simplecalendar"
-version = "0.1.0"
+
+// The version people see comes from the image — `SC_VERSION`, the number CI gave that build —
+// and is what /api/health reports. Gradle's own version names local archives and nothing else,
+// so it stays at the series: baking the build number in here would invalidate the Docker layer
+// that compiles the server on every single build.
+version = file("VERSION").readText().trim() + ".0-dev"
 
 kotlin {
     jvmToolchain(21)

@@ -24,6 +24,8 @@ data class HomeAssistantStates(
     val entities: List<EntityState>,
     /** Configured ids Home Assistant does not know — a typo, or a renamed entity. */
     val missing: List<String> = emptyList(),
+    /** The places of `SC_HA_SENSORS`, in the order they were listed. */
+    val sensors: List<SensorReading> = emptyList(),
 )
 
 @Serializable
@@ -41,6 +43,23 @@ data class EntityState(
 )
 
 /**
+ * One place in the house, as the wall names it, with its two readings.
+ *
+ * A Home Assistant sensor entity carries a single number, so "the bedroom" is two entities. Which
+ * two only the household can say — `SC_HA_SENSORS` is where it is written down — and so is the
+ * name, because «Спальня» reads better on a wall than «Bedroom Temperature Sensor».
+ */
+@Serializable
+data class SensorReading(
+    val name: String,
+    /** `null` when the entity is unavailable, unknown, or simply not a number. */
+    val temperature: Double? = null,
+    val temperatureUnit: String? = null,
+    val humidity: Double? = null,
+    val humidityUnit: String? = null,
+)
+
+/**
  * The state of chosen Home Assistant entities — the temperature indoors, who is home, whether the
  * washing machine is done.
  *
@@ -53,6 +72,7 @@ class HomeAssistantIntegration(
     private val baseUrl: String,
     private val token: String,
     private val entityIds: List<String>,
+    private val sensors: List<SensorPair> = emptyList(),
 ) : Integration<HomeAssistantStates> {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -62,24 +82,34 @@ class HomeAssistantIntegration(
     override val refreshEvery = 1.minutes
     override val snapshotSerializer = HomeAssistantStates.serializer()
 
+    /** Everything worth asking for: what was listed, plus whatever the sensor pairs need. */
+    private val wanted: List<String> =
+        (entityIds + sensors.flatMap { listOfNotNull(it.temperatureId, it.humidityId) }).distinct()
+
     override suspend fun fetch(): HomeAssistantStates {
-        val entities = mutableListOf<EntityState>()
+        val fetched = mutableMapOf<String, EntityState>()
         val missing = mutableListOf<String>()
 
         // One request per entity rather than all of `/api/states`: a real installation has
         // thousands of entities and we want a handful.
-        for (entityId in entityIds) {
+        for (entityId in wanted) {
             val response = http.get("$baseUrl/api/states/$entityId") { bearerAuth(token) }
             if (response.status == HttpStatusCode.NotFound) {
                 missing += entityId
                 continue
             }
             response.requireOk("Home Assistant")
-            entities += integrationJson.decodeFromString<StateResponse>(response.bodyAsText()).toEntity()
+            fetched[entityId] = integrationJson.decodeFromString<StateResponse>(response.bodyAsText()).toEntity()
         }
 
         if (missing.isNotEmpty()) log.debug("Home Assistant does not know {}", missing)
-        return HomeAssistantStates(entities, missing)
+        return HomeAssistantStates(
+            entities = entityIds.mapNotNull(fetched::get),
+            missing = missing,
+            // A pair whose entities are all missing still gets its line, empty: a place that has
+            // disappeared from the wall is harder to notice than one showing dashes.
+            sensors = sensors.map { it.read(fetched) },
+        )
     }
 
     companion object {
@@ -90,8 +120,10 @@ class HomeAssistantIntegration(
             val env = context.env
             val url = env.string("SC_HA_URL") ?: return null
             val entityIds = env.list("SC_HA_ENTITIES")
-            require(entityIds.isNotEmpty()) {
-                "SC_HA_URL is set, but SC_HA_ENTITIES is missing: list the entities to show, e.g. sensor.living_room_temperature"
+            val sensors = parseSensors(env.string("SC_HA_SENSORS"))
+            require(entityIds.isNotEmpty() || sensors.isNotEmpty()) {
+                "SC_HA_URL is set, but neither SC_HA_ENTITIES nor SC_HA_SENSORS is: say what to show, " +
+                    "e.g. SC_HA_SENSORS=Спальня=sensor.bedroom_temperature+sensor.bedroom_humidity"
             }
             val invalid = entityIds.filterNot(ENTITY_ID::matches)
             require(invalid.isEmpty()) { "SC_HA_ENTITIES: not entity ids: $invalid" }
@@ -101,9 +133,55 @@ class HomeAssistantIntegration(
                 baseUrl = normaliseBaseUrl(url),
                 token = env.required("SC_HA_TOKEN", because = "SC_HA_URL is set"),
                 entityIds = entityIds.distinct(),
+                sensors = sensors,
             )
         }
+
+        /**
+         * Reads `SC_HA_SENSORS`: `Спальня=sensor.bedroom_temperature+sensor.bedroom_humidity`,
+         * comma-separated, the humidity half optional.
+         *
+         * Pairs are spelled out rather than guessed from device classes or from friendly names.
+         * Guessing works right up until somebody renames a sensor in Home Assistant, and then the
+         * wall quietly shows the wrong room — which is exactly the kind of error nobody spots.
+         */
+        internal fun parseSensors(raw: String?): List<SensorPair> {
+            if (raw.isNullOrBlank()) return emptyList()
+            return raw.split(',').map(String::trim).filter(String::isNotEmpty).map { item ->
+                val separator = item.indexOf('=')
+                require(separator > 0) { "SC_HA_SENSORS: «$item» is not name=entity[+entity]" }
+
+                val name = item.take(separator).trim()
+                val ids = item.substring(separator + 1).split('+').map(String::trim).filter(String::isNotEmpty)
+                require(name.isNotEmpty()) { "SC_HA_SENSORS: «$item» has no name" }
+                require(ids.size in 1..2) { "SC_HA_SENSORS: «$item» must name one or two entities" }
+
+                val invalid = ids.filterNot(ENTITY_ID::matches)
+                require(invalid.isEmpty()) { "SC_HA_SENSORS: not entity ids: $invalid" }
+                SensorPair(name, ids[0], ids.getOrNull(1))
+            }
+        }
     }
+}
+
+/** A place on the wall and the entities behind its numbers, as `SC_HA_SENSORS` spells them out. */
+data class SensorPair(val name: String, val temperatureId: String, val humidityId: String?) {
+
+    /** How the pair reads now; an entity that is missing or not a number reads as null. */
+    fun read(states: Map<String, EntityState>): SensorReading {
+        val temperature = states[temperatureId]
+        val humidity = humidityId?.let(states::get)
+        return SensorReading(
+            name = name,
+            temperature = temperature?.number(),
+            temperatureUnit = temperature?.unit,
+            humidity = humidity?.number(),
+            humidityUnit = humidity?.unit,
+        )
+    }
+
+    /** Home Assistant keeps every state as text, and `unavailable` is one of the values it sends. */
+    private fun EntityState.number(): Double? = state.trim().toDoubleOrNull()
 }
 
 @Serializable

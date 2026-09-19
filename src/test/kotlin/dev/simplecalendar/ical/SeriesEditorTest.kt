@@ -1,5 +1,6 @@
 package dev.simplecalendar.ical
 
+import dev.simplecalendar.model.EventMark
 import dev.simplecalendar.model.EventTime
 import dev.simplecalendar.model.Frequency
 import dev.simplecalendar.model.Occurrence
@@ -548,6 +549,115 @@ class SeriesEditorTest {
         )
     }
 
+    // --- marks: cancelled, moved --------------------------------------------------------------
+
+    @Test
+    fun `marking a single event leaves everything but the mark alone`() {
+        val ics = assertNotNull(
+            editor.mark(fixture("timed-single.ics"), null, EditScope.ALL, EventMark.CANCELLED).updated,
+        )
+
+        // Our own property carries the meaning; STATUS goes out beside it so that a phone opening
+        // the same event does not show it as going ahead.
+        assertContains(ics, "X-SIMPLECALENDAR-MARK:CANCELLED")
+        assertContains(ics, "STATUS:CANCELLED")
+        assertContains(ics, "DTSTART;TZID=Europe/Moscow:20260915T093000")
+        assertContains(ics, "LOCATION:Поликлиника")
+
+        val occurrence = occurrences(ics, "2026-09-01T00:00:00Z", "2026-09-30T00:00:00Z").single()
+        assertEquals(EventMark.CANCELLED, occurrence.mark)
+        assertEquals("Визит к врачу", occurrence.title)
+    }
+
+    @Test
+    fun `a postponement is ours alone and never says cancelled`() {
+        val ics = assertNotNull(
+            editor.mark(fixture("timed-single.ics"), null, EditScope.ALL, EventMark.MOVED).updated,
+        )
+
+        assertContains(ics, "X-SIMPLECALENDAR-MARK:MOVED")
+        assertFalse("STATUS:" in ics, "there is no iCalendar status for a postponement")
+        assertEquals(EventMark.MOVED, occurrences(ics, "2026-09-01T00:00:00Z", "2026-09-30T00:00:00Z").single().mark)
+    }
+
+    @Test
+    fun `marking one instance marks that instance and nothing else`() {
+        val ics = assertNotNull(
+            editor.mark(
+                fixture("weekly-jerusalem.ics"),
+                instance("2026-10-12T09:00", jerusalem),
+                EditScope.THIS,
+                EventMark.MOVED,
+            ).updated,
+        )
+
+        assertContains(ics, "RECURRENCE-ID;TZID=Asia/Jerusalem:20261012T090000")
+        assertEquals(
+            listOf("2026-10-05 -", "2026-10-12 MOVED", "2026-10-19 -", "2026-10-26 -"),
+            marks(ics, to = "2026-10-31T00:00:00Z"),
+        )
+        // A mark is bookkeeping, not a change: the new override has to sit in its own slot rather
+        // than inherit the master's day, or marking one instance would double the first one.
+        assertEquals(
+            listOf(
+                "2026-10-05 09:00+03:00 Кружок",
+                "2026-10-12 09:00+03:00 Кружок",
+                "2026-10-19 09:00+03:00 Кружок",
+                "2026-10-26 09:00+02:00 Кружок",
+            ),
+            show(ics, to = "2026-10-31T00:00:00Z"),
+        )
+    }
+
+    @Test
+    fun `marking the whole series reaches the instances that stand apart from it`() {
+        val ics = assertNotNull(
+            editor.mark(fixture("weekly-overrides.ics"), null, EditScope.ALL, EventMark.CANCELLED).updated,
+        )
+
+        // An override left unmarked would be the one entry on the wall still looking ordinary.
+        assertEquals(
+            listOf("2026-09-01", "2026-09-08", "2026-09-17", "2026-09-29", "2026-10-06").map { "$it CANCELLED" },
+            marks(ics),
+        )
+    }
+
+    @Test
+    fun `taking a mark off clears the status it wrote`() {
+        val cancelled = assertNotNull(
+            editor.mark(fixture("timed-single.ics"), null, EditScope.ALL, EventMark.CANCELLED).updated,
+        )
+        val cleared = assertNotNull(editor.mark(cancelled, null, EditScope.ALL, null).updated)
+
+        assertFalse("X-SIMPLECALENDAR-MARK" in cleared, cleared)
+        assertFalse("STATUS:CANCELLED" in cleared, "a leftover STATUS would read as cancelled again")
+        assertNull(occurrences(cleared, "2026-09-01T00:00:00Z", "2026-09-30T00:00:00Z").single().mark)
+    }
+
+    @Test
+    fun `a cancellation made on somebody's phone shows on the wall too`() {
+        val ics = fixture("timed-single.ics").replace("SUMMARY:", "STATUS:CANCELLED\r\nSUMMARY:")
+
+        assertEquals(
+            EventMark.CANCELLED,
+            occurrences(ics, "2026-09-01T00:00:00Z", "2026-09-30T00:00:00Z").single().mark,
+            "STATUS is the only thing another client can say it with",
+        )
+    }
+
+    @Test
+    fun `this and following is not offered for a mark`() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            editor.mark(
+                fixture("weekly-jerusalem.ics"),
+                instance("2026-10-12T09:00", jerusalem),
+                EditScope.FOLLOWING,
+                EventMark.CANCELLED,
+            )
+        }
+        assertContains(error.message.orEmpty(), "одно событие")
+    }
+
     // --- helpers ------------------------------------------------------------------------------
 
     private class Edited(val updated: String, val created: CreatedResource?)
@@ -592,6 +702,16 @@ class SeriesEditorTest {
                 is EventTime.AllDay -> "${time.start} ${occurrence.title}"
                 is EventTime.Timed -> "${time.start.format(WHEN)} ${occurrence.title}"
             }
+        }
+
+    /** What is marked and what is not, one line per occurrence. */
+    private fun marks(ics: String, from: String = "2026-09-01T00:00:00Z", to: String = "2026-11-10T00:00:00Z"): List<String> =
+        occurrences(ics, from, to).map { occurrence ->
+            val day = when (val time = occurrence.time) {
+                is EventTime.AllDay -> time.start.toString()
+                is EventTime.Timed -> time.start.toLocalDate().toString()
+            }
+            "$day ${occurrence.mark?.name ?: "-"}"
         }
 
     private fun occurrenceOn(ics: String, date: String): Occurrence =

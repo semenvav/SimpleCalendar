@@ -1,5 +1,6 @@
 package dev.simplecalendar.ical
 
+import dev.simplecalendar.model.EventMark
 import dev.simplecalendar.model.EventTime
 import dev.simplecalendar.model.RepeatRule
 import net.fortuna.ical4j.data.CalendarBuilder
@@ -24,8 +25,10 @@ import net.fortuna.ical4j.model.property.RDate
 import net.fortuna.ical4j.model.property.RRule
 import net.fortuna.ical4j.model.property.RecurrenceId
 import net.fortuna.ical4j.model.property.Sequence
+import net.fortuna.ical4j.model.property.Status
 import net.fortuna.ical4j.model.property.Summary
 import net.fortuna.ical4j.model.property.Uid
+import net.fortuna.ical4j.model.property.XProperty
 import net.fortuna.ical4j.model.property.immutable.ImmutableVersion
 import java.io.StringReader
 import java.io.StringWriter
@@ -173,6 +176,33 @@ object IcsWriter {
             Property.EXDATE -> ExDate<Temporal>(parameters, text)
             Property.RDATE -> RDate<Temporal>(parameters, text)
             else -> throw IllegalArgumentException("$name is not a date-list property")
+        }
+    }
+
+    /**
+     * Writes the hand-made mark, or takes it off when [mark] is null.
+     *
+     * A cancellation also goes out as `STATUS:CANCELLED`, which every calendar understands; a
+     * postponement has no such equivalent and lives in our property alone. Taking a mark off
+     * clears both, including a `STATUS:CANCELLED` that came from somewhere else — otherwise the
+     * event would read as cancelled again on the next sync.
+     */
+    internal fun setMark(event: VEvent, mark: EventMark?) {
+        event.clearProperty(MARK_PROPERTY)
+        when (mark) {
+            null -> if (event.statusValue()?.equals("CANCELLED", ignoreCase = true) == true) {
+                event.clearProperty(Property.STATUS)
+            }
+            EventMark.CANCELLED -> {
+                event.setProperty(XProperty(MARK_PROPERTY, mark.name))
+                event.setProperty(Status(ParameterList(), Status.VALUE_CANCELLED))
+            }
+            EventMark.MOVED -> {
+                event.setProperty(XProperty(MARK_PROPERTY, mark.name))
+                if (event.statusValue()?.equals("CANCELLED", ignoreCase = true) == true) {
+                    event.clearProperty(Property.STATUS)
+                }
+            }
         }
     }
 

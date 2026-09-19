@@ -1,4 +1,12 @@
-import type { CalendarDto, EditScope, EventDto, HealthDto, RepeatDto, SyncStatusDto } from './types'
+import type {
+  CalendarDto,
+  EditScope,
+  EventDto,
+  EventMark,
+  HealthDto,
+  RepeatDto,
+  SyncStatusDto,
+} from './types'
 
 const BASE = '/api'
 
@@ -65,6 +73,37 @@ export const updateEvent = (id: string, body: EventWriteRequest, scope?: EditSco
     method: 'PATCH',
     body: JSON.stringify(body),
   })
+
+/**
+ * Marks an occurrence cancelled or moved, or takes the mark off with `null`.
+ *
+ * Its own endpoint rather than a field on the edit: a mark carries no draft and moves nothing,
+ * and it has to stay possible on an event the form could not describe. [scope] is `this` or
+ * `all` — a mark never splits a series.
+ */
+export const markEvent = (id: string, mark: EventMark | null, scope?: EditScope) =>
+  request<EventDto>(`/events/mark?${eventQuery(id, scope)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ mark }),
+  })
+
+/**
+ * What an integration last managed to fetch, or `null` when it has nothing yet — or is not
+ * configured at all, which the server answers with a plain 404.
+ *
+ * A failure upstream is deliberately not passed on: the server keeps serving the last good
+ * answer, and a stale forecast on the wall beats an empty corner.
+ */
+export async function fetchIntegration<T>(id: string): Promise<T | null> {
+  const response = await fetch(`${BASE}/integrations/${encodeURIComponent(id)}`)
+  if (response.status === 404) return null
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new ApiError(response.status, body?.message ?? `${response.status} ${response.statusText}`)
+  }
+  const snapshot = (await response.json()) as { data?: T | null }
+  return snapshot.data ?? null
+}
 
 export async function deleteEvent(id: string, scope?: EditScope): Promise<void> {
   const response = await fetch(`${BASE}/events?${eventQuery(id, scope)}`, { method: 'DELETE' })

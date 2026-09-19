@@ -348,6 +348,7 @@ class EventExpander(private val zone: ZoneId) {
         description = descriptionValue()?.takeIf { it.isNotBlank() },
         location = locationValue()?.takeIf { it.isNotBlank() },
         status = statusValue(),
+        mark = markValue(),
         recurring = recurring,
         repeat = repeat,
     )

@@ -1,4 +1,5 @@
-import type { CalendarDto, EventDto } from '../api/types'
+import type { CalendarDto, EventDto, EventMark } from '../api/types'
+import { MARK_COLOR } from '../lib/marks'
 
 /**
  * The only file that knows what shape the calendar library wants.
@@ -26,16 +27,29 @@ export interface CalendarEvent {
   allDay: boolean
   backgroundColor: string
   textColor: string
+  /** Extra classes on the entry; a layout's CSS decides what, if anything, they mean. */
+  className?: string
+  /** Inline custom properties for those classes to use. */
+  style?: string
   extendedProps: EventDetailsData
 }
 
-export function toCalendarEvents(events: EventDto[], calendars: CalendarDto[]): CalendarEvent[] {
+/**
+ * [marks] is a layout's decision: a layout that does not offer the hand-made marks must not show
+ * them either, so nothing about a marked event reaches it.
+ */
+export function toCalendarEvents(
+  events: EventDto[],
+  calendars: CalendarDto[],
+  marks = false,
+): CalendarEvent[] {
   const byId = new Map(calendars.map((c) => [c.id, c]))
 
   return events.map((event) => {
     const calendar = byId.get(event.calendarId)
     const backgroundColor = calendar?.color ?? '#6b7280'
     const textColor = readableTextColor(backgroundColor)
+    const mark = marks ? event.mark : undefined
 
     return {
       id: event.id,
@@ -45,6 +59,8 @@ export function toCalendarEvents(events: EventDto[], calendars: CalendarDto[]): 
       allDay: event.allDay,
       backgroundColor,
       textColor,
+      className: mark ? `event-marked event-marked-${mark}` : undefined,
+      style: mark ? markStyle(mark, textColor) : undefined,
       extendedProps: {
         source: event,
         calendarName: calendar?.name ?? 'Календарь',
@@ -53,6 +69,19 @@ export function toCalendarEvents(events: EventDto[], calendars: CalendarDto[]): 
       },
     }
   })
+}
+
+/**
+ * The colours a marked entry needs, as custom properties; the shape of the split is the layout's
+ * business (see `layouts/integration/integration.css`).
+ *
+ * The title crosses both halves, so it also carries a shadow in the direction the text is not:
+ * white letters get a dark one, dark letters a light one, and either stays readable over a colour
+ * chosen for what it means rather than for what it sits under.
+ */
+function markStyle(mark: EventMark, textColor: string): string {
+  const shadow = textColor === '#ffffff' ? 'rgb(0 0 0 / 55%)' : 'rgb(255 255 255 / 75%)'
+  return `--mark-color:${MARK_COLOR[mark]};--mark-shadow:${shadow}`
 }
 
 /**

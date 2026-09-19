@@ -4,6 +4,7 @@ import dev.simplecalendar.ical.EditScope
 import dev.simplecalendar.ical.EventDraft
 import dev.simplecalendar.ical.RepeatChange
 import dev.simplecalendar.model.CalendarCollection
+import dev.simplecalendar.model.EventMark
 import dev.simplecalendar.model.EventTime
 import dev.simplecalendar.model.Frequency
 import dev.simplecalendar.model.Occurrence
@@ -65,6 +66,8 @@ data class EventDto(
     val recurring: Boolean,
     /** The series' rule when the form can show it; absent for single events and richer rules. */
     val repeat: RepeatDto? = null,
+    /** `cancelled` or `moved` when somebody marked this occurrence by hand; absent otherwise. */
+    val mark: String? = null,
     val readOnly: Boolean,
 )
 
@@ -93,6 +96,13 @@ data class CalendarPatch(
     val visible: Boolean? = null,
     val sortOrder: Int? = null,
 )
+
+/**
+ * What the UI sends to mark an occurrence by hand: `cancelled`, `moved`, or nothing at all to
+ * take the mark off.
+ */
+@Serializable
+data class EventMarkRequest(val mark: String? = null)
 
 /**
  * What the UI sends to create or change an event.
@@ -165,6 +175,14 @@ fun EventWriteRequest.repeatChange(draft: EventDraft): RepeatChange {
     return RepeatChange.To(RepeatRule(frequency, raw.interval, until))
 }
 
+/** Reads [EventMarkRequest.mark]; absent, blank or `none` takes the mark off. */
+fun EventMarkRequest.toMark(): EventMark? {
+    val raw = mark?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (raw.equals("none", ignoreCase = true)) return null
+    return EventMark.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
+        ?: throw IllegalArgumentException("Неизвестная отметка «$raw»: ожидается cancelled, moved или none.")
+}
+
 /** The `scope` query parameter of an edit or delete; absent means the whole event, as before M3. */
 fun parseScope(raw: String?): EditScope = when (raw?.trim()?.lowercase()) {
     null, "", "all" -> EditScope.ALL
@@ -217,6 +235,7 @@ fun Occurrence.toDto(readOnly: Boolean): EventDto {
         end = end,
         recurring = recurring,
         repeat = repeat?.toDto(),
+        mark = mark?.name?.lowercase(),
         readOnly = readOnly,
     )
 }

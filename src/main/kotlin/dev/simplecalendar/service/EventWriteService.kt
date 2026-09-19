@@ -13,6 +13,7 @@ import dev.simplecalendar.ical.RepeatChange
 import dev.simplecalendar.ical.SeriesChange
 import dev.simplecalendar.ical.SeriesEditor
 import dev.simplecalendar.model.CalendarCollection
+import dev.simplecalendar.model.EventMark
 import dev.simplecalendar.model.Occurrence
 import dev.simplecalendar.model.RepeatRule
 import dev.simplecalendar.model.StoredEvent
@@ -87,6 +88,33 @@ class EventWriteService(
         log.info("Updated event '{}' in '{}' ({})", draft.title, calendar.name, scope.name.lowercase())
 
         return result ?: throw NotSupportedException("Событие сохранено, но не удалось его отобразить.")
+    }
+
+    /**
+     * Marks an event cancelled or moved by hand, or takes the mark off ([mark] null).
+     *
+     * Only the mark changes: the event keeps its day, its hour and its place in the series. For a
+     * repeating one [scope] says whether this is about the instance [instanceId] names or the
+     * whole series; `FOLLOWING` is refused, see [SeriesEditor.mark].
+     */
+    suspend fun mark(
+        calendarId: String,
+        href: String,
+        mark: EventMark?,
+        instanceId: String? = null,
+        scope: EditScope = EditScope.ALL,
+    ): Occurrence {
+        val calendar = writableCalendar(calendarId)
+        val stored = storedEvent(calendarId, href)
+
+        val change = seriesChange { editor.mark(stored.ics, instanceId, scope, mark) }
+        val result = apply(calendar, stored, change)
+        log.info(
+            "Marked {} in '{}' as {} ({})",
+            href, calendar.name, mark?.name?.lowercase() ?: "none", scope.name.lowercase(),
+        )
+
+        return result ?: throw NotSupportedException("Отметка сохранена, но не удалось показать событие.")
     }
 
     /**

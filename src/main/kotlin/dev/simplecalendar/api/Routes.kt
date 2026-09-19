@@ -29,8 +29,6 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 
-private const val VERSION = "0.1.0"
-
 /** Refuses absurd windows so one bad request cannot pin a CPU expanding a century of recurrences. */
 private val MAX_RANGE: Duration = Duration.ofDays(1100)
 
@@ -47,7 +45,7 @@ fun Application.installRoutes(components: AppComponents) {
                 call.respond(
                     HealthDto(
                         status = "ok",
-                        version = VERSION,
+                        version = components.config.version,
                         timeZone = zone.id,
                         sync = status.toDto(),
                     ),
@@ -128,6 +126,24 @@ fun Application.installRoutes(components: AppComponents) {
                     repeat = request.repeatChange(draft),
                 )
                 call.respond(updated.toDto(readOnly = false))
+            }
+
+            // Separate from PATCH /events: a mark is not an edit. It carries no draft, it never
+            // moves anything, and it must stay possible on an event the form could not describe.
+            patch("/events/mark") {
+                val write = requireWriteService(components)
+                val event = parseEventId(call.parameters["id"] ?: missing("id"))
+                val scope = parseScope(call.parameters["scope"])
+                val request = call.receive<EventMarkRequest>()
+
+                val marked = write.mark(
+                    calendarId = event.calendarId,
+                    href = event.href,
+                    mark = request.toMark(),
+                    instanceId = event.instanceId,
+                    scope = scope,
+                )
+                call.respond(marked.toDto(readOnly = false))
             }
 
             delete("/events") {

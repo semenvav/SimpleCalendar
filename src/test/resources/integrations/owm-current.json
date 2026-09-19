@@ -1,0 +1,15 @@
+{
+  "coord": {"lon": 34.78, "lat": 32.08},
+  "weather": [{"id": 800, "main": "Clear", "description": "ясно", "icon": "01n"}],
+  "base": "stations",
+  "main": {"temp": 21.4, "feels_like": 20.9, "temp_min": 20.1, "temp_max": 22.8, "pressure": 1011, "humidity": 78},
+  "visibility": 10000,
+  "wind": {"speed": 1.7, "deg": 280},
+  "clouds": {"all": 0},
+  "dt": 1789591500,
+  "sys": {"country": "IL", "sunrise": 1789537800, "sunset": 1789582200},
+  "timezone": 10800,
+  "id": 293397,
+  "name": "Tel Aviv",
+  "cod": 200
+}

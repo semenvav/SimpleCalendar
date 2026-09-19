@@ -1,5 +1,6 @@
 package dev.simplecalendar.ical
 
+import dev.simplecalendar.model.EventMark
 import dev.simplecalendar.model.EventTime
 import net.fortuna.ical4j.data.CalendarBuilder
 import net.fortuna.ical4j.model.Parameter
@@ -86,6 +87,25 @@ fun VEvent.descriptionValue(): String? = getProperty<Property>(Property.DESCRIPT
 fun VEvent.locationValue(): String? = getProperty<Property>(Property.LOCATION).orElse(null)?.value
 
 fun VEvent.statusValue(): String? = getProperty<Property>(Property.STATUS).orElse(null)?.value
+
+/**
+ * The property carrying our hand-made mark. `X-` because iCalendar has no status for "moved":
+ * `STATUS` offers only TENTATIVE, CONFIRMED and CANCELLED, and calling a postponement tentative
+ * would be a lie every other client would read.
+ */
+const val MARK_PROPERTY = "X-SIMPLECALENDAR-MARK"
+
+/**
+ * Whether this component is marked cancelled or moved.
+ *
+ * Our own property first. Failing that, a `STATUS:CANCELLED` somebody's phone wrote counts as a
+ * cancellation too — the wall should show what the calendar says, whoever said it.
+ */
+fun VEvent.markValue(): EventMark? {
+    val own = getProperty<Property>(MARK_PROPERTY).orElse(null)?.value?.trim()
+    if (own != null) return EventMark.entries.firstOrNull { it.name.equals(own, ignoreCase = true) }
+    return if (statusValue()?.equals("CANCELLED", ignoreCase = true) == true) EventMark.CANCELLED else null
+}
 
 @Suppress("UNCHECKED_CAST")
 fun VEvent.startTemporal(): Temporal? =

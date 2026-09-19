@@ -1,7 +1,6 @@
 package dev.simplecalendar.integrations.weather
 
 import dev.simplecalendar.integrations.Integration
-import dev.simplecalendar.integrations.IntegrationContext
 import dev.simplecalendar.integrations.integrationJson
 import dev.simplecalendar.integrations.requireOk
 import io.ktor.client.HttpClient
@@ -13,44 +12,14 @@ import kotlinx.serialization.Serializable
 import java.time.ZoneId
 import kotlin.time.Duration.Companion.minutes
 
-/** Current conditions and the days ahead, in °C, % and km/h. */
-@Serializable
-data class Weather(
-    val current: CurrentWeather,
-    /** Today first, [FORECAST_DAYS] days in all. */
-    val days: List<DayWeather>,
-)
-
-@Serializable
-data class CurrentWeather(
-    /** Household wall-clock time the values are for, `2026-09-16T11:45`. */
-    val time: String,
-    /** See [condition]. */
-    val condition: String?,
-    val temperature: Double?,
-    val feelsLike: Double?,
-    val humidity: Int?,
-    val windSpeed: Double?,
-)
-
-@Serializable
-data class DayWeather(
-    /** `YYYY-MM-DD`, a day in the household zone. */
-    val date: String,
-    val condition: String?,
-    val temperatureMax: Double?,
-    val temperatureMin: Double?,
-    /** The highest chance of precipitation in any hour of the day, 0–100. */
-    val precipitationProbability: Int?,
-)
-
 /**
  * The forecast from Open-Meteo: free, no key, and good enough for "do the kids need a jacket".
  *
  * Provider codes stop here. Conditions are named in Home Assistant's vocabulary, so the frontend
- * draws `rainy` rather than WMO code 61, and another source could stand behind the same shape.
+ * draws `rainy` rather than WMO code 61, and another source — see [OpenWeatherMapWeather] —
+ * stands behind the same [Weather] shape.
  */
-class WeatherIntegration(
+class OpenMeteoWeather(
     private val http: HttpClient,
     private val latitude: Double,
     private val longitude: Double,
@@ -58,7 +27,7 @@ class WeatherIntegration(
     private val baseUrl: String = OPEN_METEO,
 ) : Integration<Weather> {
 
-    override val id = "weather"
+    override val id = WEATHER_ID
     override val endpoint get() = baseUrl
     override val refreshEvery = 30.minutes
     override val snapshotSerializer = Weather.serializer()
@@ -74,7 +43,11 @@ class WeatherIntegration(
                 "current",
                 "temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day",
             )
-            parameter("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max")
+            parameter(
+                "daily",
+                "weather_code,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean," +
+                    "precipitation_probability_max",
+            )
         }.requireOk("Open-Meteo")
 
         return integrationJson.decodeFromString<Forecast>(response.bodyAsText()).toWeather()
@@ -85,20 +58,6 @@ class WeatherIntegration(
 
         /** The most Open-Meteo gives. */
         const val FORECAST_DAYS = 16
-
-        fun fromEnv(context: IntegrationContext): WeatherIntegration? {
-            val env = context.env
-            val latitude = env.double("SC_WEATHER_LATITUDE")
-            val longitude = env.double("SC_WEATHER_LONGITUDE")
-            if (latitude == null && longitude == null) return null
-
-            requireNotNull(latitude) { "SC_WEATHER_LONGITUDE is set, but SC_WEATHER_LATITUDE is missing" }
-            requireNotNull(longitude) { "SC_WEATHER_LATITUDE is set, but SC_WEATHER_LONGITUDE is missing" }
-            require(latitude in -90.0..90.0) { "SC_WEATHER_LATITUDE must be between -90 and 90, got $latitude" }
-            require(longitude in -180.0..180.0) { "SC_WEATHER_LONGITUDE must be between -180 and 180, got $longitude" }
-
-            return WeatherIntegration(context.http, latitude, longitude, context.zone)
-        }
     }
 }
 
@@ -143,6 +102,7 @@ private class Daily(
     @SerialName("weather_code") val code: List<Int?> = emptyList(),
     @SerialName("temperature_2m_max") val max: List<Double?> = emptyList(),
     @SerialName("temperature_2m_min") val min: List<Double?> = emptyList(),
+    @SerialName("relative_humidity_2m_mean") val humidity: List<Int?> = emptyList(),
     @SerialName("precipitation_probability_max") val precipitation: List<Int?> = emptyList(),
 )
 
@@ -161,6 +121,7 @@ private fun Forecast.toWeather() = Weather(
             condition = condition(daily.code.getOrNull(i)),
             temperatureMax = daily.max.getOrNull(i),
             temperatureMin = daily.min.getOrNull(i),
+            humidity = daily.humidity.getOrNull(i),
             precipitationProbability = daily.precipitation.getOrNull(i),
         )
     },

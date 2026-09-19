@@ -5,6 +5,7 @@ import dev.simplecalendar.config.CalDavConfig
 import dev.simplecalendar.ical.EditScope
 import dev.simplecalendar.ical.EventDraft
 import dev.simplecalendar.ical.EventExpander
+import dev.simplecalendar.model.EventMark
 import dev.simplecalendar.model.EventTime
 import dev.simplecalendar.model.Frequency
 import dev.simplecalendar.model.RepeatRule
@@ -43,6 +44,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -247,6 +249,56 @@ class EventWriteServiceTest {
         assertTrue(onServer.etag != originalEtag, "the edit has to go through the server")
         assertEquals(2, Regex("RECURRENCE-ID").findAll(onServer.ics).count(), "the moved instance plus this one")
         assertEquals(onServer.etag, events.byHref("mum", href)?.etag)
+    }
+
+    @Test
+    fun `marking an event goes through the server and comes back on the occurrence`() = runBlocking {
+        val created = write.create("mum", draft("Визит к врачу"))
+        val originalEtag = stored.values.single().etag
+
+        val marked = write.mark("mum", created.href, EventMark.CANCELLED)
+
+        assertEquals(EventMark.CANCELLED, marked.mark)
+        assertEquals(created.time, marked.time, "a mark must not move anything")
+        assertEquals("Визит к врачу", marked.title)
+
+        val onServer = stored.values.single()
+        assertTrue(onServer.ics.contains("X-SIMPLECALENDAR-MARK:CANCELLED"), onServer.ics)
+        assertTrue(onServer.etag != originalEtag, "the mark has to be written, not just shown")
+        assertEquals(onServer.etag, events.byHref("mum", created.href)?.etag)
+    }
+
+    @Test
+    fun `taking a mark off leaves the event as it was`() = runBlocking {
+        val created = write.create("mum", draft("Визит к врачу"))
+        write.mark("mum", created.href, EventMark.MOVED)
+
+        val cleared = write.mark("mum", created.href, null)
+
+        assertNull(cleared.mark)
+        assertFalse(stored.values.single().ics.contains("X-SIMPLECALENDAR-MARK"), stored.values.single().ics)
+    }
+
+    @Test
+    fun `marking one instance of a series leaves the others unmarked`() = runBlocking {
+        val href = seedRecurring("weekly-moved-override.ics")
+
+        write.mark("mum", href, EventMark.CANCELLED, instanceId = mondayAt10(21), scope = EditScope.THIS)
+
+        val onServer = stored.getValue(href)
+        assertEquals(
+            1,
+            Regex("X-SIMPLECALENDAR-MARK").findAll(onServer.ics).count(),
+            "only the instance that was marked",
+        )
+        assertEquals(onServer.etag, events.byHref("mum", href)?.etag)
+    }
+
+    @Test
+    fun `a read-only calendar refuses a mark too`() = runBlocking {
+        val created = write.create("mum", draft("Визит к врачу"))
+        assertFailsWith<ForbiddenException> { write.mark("holidays", created.href, EventMark.CANCELLED) }
+        Unit
     }
 
     @Test

@@ -37,10 +37,16 @@ WORKDIR /app
 COPY --from=backend /build/build/install/simple-calendar/ ./
 COPY --from=frontend /build/dist/ ./static/
 
+# Which published build this is; CI passes the number it is about to tag (see
+# .github/workflows/ci.yml) and /api/health reports it. Only this last stage takes it, so a new
+# number never invalidates the layers that compile the server.
+ARG SC_VERSION=dev
+
 ENV SC_PORT=8080 \
     SC_HOST=0.0.0.0 \
     SC_DATA_DIR=/data \
-    SC_STATIC_DIR=/app/static
+    SC_STATIC_DIR=/app/static \
+    SC_VERSION=${SC_VERSION}
 
 RUN mkdir -p /data
 VOLUME ["/data"]

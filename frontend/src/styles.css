@@ -359,6 +359,31 @@ body {
   color: var(--danger);
 }
 
+/*
+ * The hand-made marks on the event card. Outlined while the event carries no mark, filled once
+ * it does — so the card says what the entry on the calendar says, and tapping the filled one is
+ * visibly the way back.
+ *
+ * `--mark-color` comes from the button itself (see lib/marks.ts).
+ */
+.button.mark {
+  padding: 0 16px;
+  border-color: var(--mark-color);
+  color: var(--mark-color);
+}
+
+.button.mark.on {
+  background: var(--mark-color);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Four buttons do not always fit one row; a second row is better than a row off the edge. */
+.details-actions {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
 /* --- Questions: which part of a series, whether to delete -------------------------------- */
 
 /* Over the form it interrupts. */
