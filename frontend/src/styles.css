@@ -378,10 +378,39 @@ body {
   font-weight: 600;
 }
 
-/* Four buttons do not always fit one row; a second row is better than a row off the edge. */
+/*
+ * The card that offers the marks is as wide as the form, not as the plain card: four buttons in
+ * Russian need about 470px of row, and 520px minus the footer's own padding left no real margin —
+ * a slightly wider font on some device would have pushed them over the edge.
+ */
+.details-wide {
+  width: min(560px, 100%);
+}
+
+/*
+ * The event card's four buttons: «Удалить», the two marks, «Изменить».
+ *
+ * A grid rather than flex with spacers, so that the two ways they can sit are the only two. Wide
+ * enough and they are one row of their natural widths with the leftover space spread between
+ * them; too narrow and they become two rows of two, each pair sharing the width equally. Flex
+ * wrapping gave neither — it broke wherever the line happened to run out, three and one.
+ */
 .details-actions {
-  flex-wrap: wrap;
-  row-gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/*
+ * Below this the dialog is too narrow for four buttons in Russian. It is a property of the words,
+ * not of the device, so the number is generous: a wall or a laptop is never this narrow, and on a
+ * phone two rows of two read better than four cramped buttons anyway.
+ */
+@media (max-width: 640px) {
+  .details-actions {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 /* --- Questions: which part of a series, whether to delete -------------------------------- */

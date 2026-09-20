@@ -1,4 +1,4 @@
-import { Fragment, type CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 import type { EventMark } from '../api/types'
 import type { EventDetailsData } from '../calendar/adapter'
 import { addDays, capitalise, formatDayMonth, formatTime, formatWeekday, isSameDay, parseLocal } from '../lib/dates'
@@ -25,10 +25,13 @@ export function EventDetails({ event, busy, onEdit, onDelete, onMark, onClose }:
   const source = event.source
   const repeat = describeRepeat(source)
   const backdrop = useBackdropDismiss(onClose)
+  // A read-only calendar gets no buttons at all, so it needs neither the marks nor the room.
+  const marks = onMark && !source.readOnly ? onMark : null
 
   return (
     <div className="details-backdrop" {...backdrop}>
-      <aside className="details">
+      {/* Wider than the plain card: it has two more buttons to hold on one row. */}
+      <aside className={`details${marks ? ' details-wide' : ''}`}>
         <div className="details-header" style={{ background: event.backgroundColor, color: event.textColor }}>
           <h2>{source.title}</h2>
           <button className="details-close" onClick={onClose} aria-label="Закрыть">
@@ -46,7 +49,7 @@ export function EventDetails({ event, busy, onEdit, onDelete, onMark, onClose }:
             {event.calendarName}
           </dd>
 
-          {onMark && source.mark && (
+          {marks && source.mark && (
             <>
               <dt>Статус</dt>
               <dd>
@@ -82,31 +85,34 @@ export function EventDetails({ event, busy, onEdit, onDelete, onMark, onClose }:
           <p className="details-note">Этот календарь доступен только для чтения.</p>
         ) : (
           // For a repeating event every button goes on to ask which part of the series is meant.
-          // The spacers between them are equal, so no button sits closer to «Удалить» than the
-          // rest — on a wall, a fingertip should not find the destructive one by accident.
-          <div className={`form-actions${onMark ? ' details-actions' : ''}`}>
+          //
+          // With the marks there are four of them, and they are laid out by `.details-actions`
+          // rather than by the stretching spacers the two-button case uses: spacers count as
+          // flex children, so they add gaps of their own and push a row that would otherwise fit
+          // onto a second line — which is how they ended up three and one.
+          <div className={`form-actions${marks ? ' details-actions' : ''}`}>
             <button type="button" className="button danger" onClick={onDelete} disabled={busy}>
               Удалить
             </button>
-            <span className="form-actions-spacer" />
 
-            {onMark &&
+            {marks ? (
               MARKS.map((mark) => (
-                <Fragment key={mark}>
-                  <button
-                    type="button"
-                    className={`button mark${source.mark === mark ? ' on' : ''}`}
-                    style={{ '--mark-color': MARK_COLOR[mark] } as CSSProperties}
-                    onClick={() => onMark(mark)}
-                    disabled={busy}
-                    aria-pressed={source.mark === mark}
-                    title={source.mark === mark ? `Снять отметку «${MARK_LABEL[mark]}»` : undefined}
-                  >
-                    {MARK_ACTION[mark]}
-                  </button>
-                  <span className="form-actions-spacer" />
-                </Fragment>
-              ))}
+                <button
+                  key={mark}
+                  type="button"
+                  className={`button mark${source.mark === mark ? ' on' : ''}`}
+                  style={{ '--mark-color': MARK_COLOR[mark] } as CSSProperties}
+                  onClick={() => marks(mark)}
+                  disabled={busy}
+                  aria-pressed={source.mark === mark}
+                  title={source.mark === mark ? `Снять отметку «${MARK_LABEL[mark]}»` : undefined}
+                >
+                  {MARK_ACTION[mark]}
+                </button>
+              ))
+            ) : (
+              <span className="form-actions-spacer" />
+            )}
 
             <button type="button" className="button primary" onClick={onEdit} disabled={busy}>
               Изменить

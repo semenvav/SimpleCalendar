@@ -28,6 +28,10 @@
  * Three columns, the middle one taking whatever is left. The navigation and the views keep their
  * natural width at the edges, so the title stays put as the months change under it instead of
  * sliding about with the length of their names.
+ *
+ * Two rows in all — this one and the calendars below — exactly as in «Классика», and every child
+ * of this row is at most a button tall. That is what makes both toolbars the same height, so the
+ * months sit in the same place whichever layout the wall is showing.
  */
 .layout-integration .toolbar-row {
   display: grid;
@@ -36,32 +40,16 @@
   gap: 16px;
 }
 
-.layout-integration .toolbar-left {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-/* Sensors — period — weather. The title takes the middle, the strips sit against the edges. */
+/* Sensors on one side, weather on the other; what the period is, the calendar says itself. */
 .layout-integration .toolbar-middle {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 24px;
   min-width: 0;
 }
 
-.layout-integration .toolbar-title {
+.layout-integration .toolbar-gap {
   flex: 1;
-  margin: 0;
-  font-size: var(--font-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .layout-integration .nav-group,
@@ -128,11 +116,12 @@
 .layout-integration .strip {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   flex: 0 0 auto;
   min-width: 0;
-  font-size: 19px;
-  line-height: 1.3;
+  /* Two lines at this size come to ~42px — inside the 48px of a button, which is what keeps the
+     toolbar the same height as the classic one. Do not enlarge without checking that. */
+  font-size: 17px;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
@@ -253,6 +242,10 @@
   box-shadow: var(--shadow);
 }
 
+/*
+ * The name of the period, above the grid it belongs to: one heading over a single month, one over
+ * each of the two. The toolbar has none — see Toolbar.tsx.
+ */
 .layout-integration .month-pane-title {
   margin: 0 0 8px;
   font-size: 18px;
@@ -261,25 +254,44 @@
   text-align: center;
 }
 
+/* A single view is a card with its own heading, so it lays itself out like a month pane. */
+.layout-integration .calendar-area:not(.split) {
+  display: flex;
+  flex-direction: column;
+}
+
+.layout-integration .calendar-area:not(.split) > .calendar-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Square like the refresh and the plus: the menu says which layout is current, the button need not. */
+.layout-integration .nav-button.layout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-muted);
+}
+
 .layout-integration .month-pane .calendar-host {
   flex: 1;
   min-height: 0;
 }
 
-/* Narrower than a tablet in landscape: the strips go under the title rather than beside it. */
-@media (max-width: 1400px) {
+/*
+ * Too narrow for one row: the strips go under the title rather than beside it. Below this width
+ * the toolbar is taller than the classic one — unavoidable, and no wall is this narrow.
+ */
+@media (max-width: 1100px) {
   .layout-integration .toolbar-middle {
     flex-wrap: wrap;
-    gap: 8px 20px;
+    gap: 4px 20px;
   }
 
-  .layout-integration .toolbar-title {
-    order: -1;
-    flex: 1 0 100%;
-  }
-
-  .layout-integration .strip {
-    font-size: 17px;
+  /* Wrapped, the readings sit one under the other and the spacer has nothing left to push. */
+  .layout-integration .toolbar-gap {
+    display: none;
   }
 }
 

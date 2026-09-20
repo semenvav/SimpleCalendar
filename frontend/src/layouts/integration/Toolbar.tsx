@@ -18,53 +18,37 @@ interface ToolbarProps {
 }
 
 /**
- * One row: navigation and calendars on the left, views on the right, and between them what the
- * house itself has to say — the sensors, the period, the weather.
+ * Navigation on the left, views on the right, and between them what the house itself has to say —
+ * the sensors and the weather. Calendars in a row beneath, as in «Классика».
  *
- * The strips flank the title rather than sitting under it. The top of a wall calendar is the one
- * strip of screen a passer-by reads without stopping, and the months below need every pixel of
- * the height.
+ * The readings take a row of the toolbar rather than one of their own, and are sized to stay
+ * within the height of a button. Both together are what keeps this toolbar exactly as tall as the
+ * classic one, so switching layouts on the wall does not shift the months up or down.
  */
 export function Toolbar({ app, views }: ToolbarProps) {
   return (
     <header className="toolbar">
       <div className="toolbar-row">
-        <div className="toolbar-left">
-          <div className="nav-group">
-            <button className="nav-button" onClick={app.prev} aria-label="Назад">
-              ‹
-            </button>
-            <button className="nav-button today" onClick={app.today}>
-              Сегодня
-            </button>
-            <button className="nav-button" onClick={app.next} aria-label="Вперёд">
-              ›
-            </button>
-          </div>
-
-          {app.calendars.length > 0 && (
-            <div className="legend">
-              {app.calendars.map((calendar) => {
-                const off = app.hidden.has(calendar.id)
-                return (
-                  <button
-                    key={calendar.id}
-                    className={`legend-chip${off ? ' off' : ''}`}
-                    onClick={() => app.toggleCalendar(calendar.id)}
-                    style={{ '--chip-color': calendar.color } as CSSProperties}
-                  >
-                    <span className="legend-dot" />
-                    {calendar.name}
-                  </button>
-                )
-              })}
-            </div>
-          )}
+        <div className="nav-group">
+          <button className="nav-button" onClick={app.prev} aria-label="Назад">
+            ‹
+          </button>
+          <button className="nav-button today" onClick={app.today}>
+            Сегодня
+          </button>
+          <button className="nav-button" onClick={app.next} aria-label="Вперёд">
+            ›
+          </button>
         </div>
 
+        {/*
+          No heading: the calendar names its own period. The spacer is what keeps the readings
+          against the edges of the middle whichever of them is configured — with one strip alone,
+          `space-between` would simply put it on the left.
+        */}
         <div className="toolbar-middle">
           <SensorStrip />
-          <h1 className="toolbar-title">{app.title}</h1>
+          <span className="toolbar-gap" />
           <WeatherStrip />
         </div>
 
@@ -96,9 +80,28 @@ export function Toolbar({ app, views }: ToolbarProps) {
           >
             +
           </button>
-          <LayoutPicker className="nav-button" />
+          <LayoutPicker className="nav-button layout" compact />
         </div>
       </div>
+
+      {app.calendars.length > 0 && (
+        <div className="legend">
+          {app.calendars.map((calendar) => {
+            const off = app.hidden.has(calendar.id)
+            return (
+              <button
+                key={calendar.id}
+                className={`legend-chip${off ? ' off' : ''}`}
+                onClick={() => app.toggleCalendar(calendar.id)}
+                style={{ '--chip-color': calendar.color } as CSSProperties}
+              >
+                <span className="legend-dot" />
+                {calendar.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </header>
   )
 }

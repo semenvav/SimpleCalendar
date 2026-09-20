@@ -10,8 +10,11 @@ import './integration.css'
 const VIEWS: readonly ViewId[] = ['twoMonths', 'month', 'week', 'list']
 
 /**
- * The wall as it is meant to be read from across the kitchen: two months side by side, what the
- * house's own sensors say and what the weather is doing, all in the one strip across the top.
+ * The wall as it is meant to be read from across the kitchen: two months side by side, and what
+ * the house's own sensors say and the weather is doing across the top.
+ *
+ * The toolbar carries no heading — the calendar names its own period, so the whole middle of the
+ * row belongs to the readings.
  *
  * It also offers the hand-made marks — cancelled, moved — which «Классика» deliberately does
  * not: an appointment that fell through stays on the calendar, half its own colour and half the
@@ -52,13 +55,19 @@ export function IntegrationLayout() {
             })}
           </div>
         ) : (
-          <CalendarView
-            view={EC_VIEW[app.view]}
-            date={toIsoDate(app.anchor)}
-            events={app.events}
-            onEventClick={app.openEvent}
-            onDateClick={app.startCreate}
-          />
+          // The period is named here rather than in the toolbar, the way the two months name
+          // themselves: on the tablet a heading that size across the top left the sensors and the
+          // forecast fighting for what was left of the row.
+          <>
+            <h2 className="month-pane-title">{app.title}</h2>
+            <CalendarView
+              view={EC_VIEW[app.view]}
+              date={toIsoDate(app.anchor)}
+              events={app.events}
+              onEventClick={app.openEvent}
+              onDateClick={app.startCreate}
+            />
+          </>
         )}
       </main>
 
