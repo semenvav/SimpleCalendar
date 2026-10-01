@@ -48,6 +48,9 @@ class OpenMeteoWeather(
                 "weather_code,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean," +
                     "precipitation_probability_max",
             )
+            // Only for the humidity at the warmest and the coolest hour; the daily summary has no
+            // such thing.
+            parameter("hourly", "temperature_2m,relative_humidity_2m")
         }.requireOk("Open-Meteo")
 
         return integrationJson.decodeFromString<Forecast>(response.bodyAsText()).toWeather()
@@ -82,7 +85,7 @@ internal fun condition(code: Int?, isDay: Boolean = true): String? = when (code)
 // --- Open-Meteo's response, only the parts we read ---------------------------------------------
 
 @Serializable
-private class Forecast(val current: Current, val daily: Daily)
+private class Forecast(val current: Current, val daily: Daily, val hourly: Hourly = Hourly())
 
 @Serializable
 private class Current(
@@ -106,23 +109,46 @@ private class Daily(
     @SerialName("precipitation_probability_max") val precipitation: List<Int?> = emptyList(),
 )
 
-private fun Forecast.toWeather() = Weather(
-    current = CurrentWeather(
-        time = current.time,
-        condition = condition(current.code, isDay = current.isDay != 0),
-        temperature = current.temperature,
-        feelsLike = current.feelsLike,
-        humidity = current.humidity,
-        windSpeed = current.windSpeed,
-    ),
-    days = daily.time.mapIndexed { i, date ->
-        DayWeather(
-            date = date,
-            condition = condition(daily.code.getOrNull(i)),
-            temperatureMax = daily.max.getOrNull(i),
-            temperatureMin = daily.min.getOrNull(i),
-            humidity = daily.humidity.getOrNull(i),
-            precipitationProbability = daily.precipitation.getOrNull(i),
-        )
-    },
+/** Column-wise like [Daily], an hour per position, on the household clock: `2026-09-16T14:00`. */
+@Serializable
+private class Hourly(
+    val time: List<String> = emptyList(),
+    @SerialName("temperature_2m") val temperature: List<Double?> = emptyList(),
+    @SerialName("relative_humidity_2m") val humidity: List<Int?> = emptyList(),
 )
+
+/** An hour that has a temperature, and the humidity that went with it. */
+private class Hour(val temperature: Double, val humidity: Int?)
+
+/** The hours of each day that have a temperature, by `YYYY-MM-DD`. */
+private fun Hourly.byDate(): Map<String, List<Hour>> =
+    time.indices
+        .mapNotNull { i -> temperature.getOrNull(i)?.let { time[i].take(10) to Hour(it, humidity.getOrNull(i)) } }
+        .groupBy({ it.first }, { it.second })
+
+private fun Forecast.toWeather(): Weather {
+    val hours = hourly.byDate()
+    return Weather(
+        current = CurrentWeather(
+            time = current.time,
+            condition = condition(current.code, isDay = current.isDay != 0),
+            temperature = current.temperature,
+            feelsLike = current.feelsLike,
+            humidity = current.humidity,
+            windSpeed = current.windSpeed,
+        ),
+        days = daily.time.mapIndexed { i, date ->
+            val day = hours[date].orEmpty()
+            DayWeather(
+                date = date,
+                condition = condition(daily.code.getOrNull(i)),
+                temperatureMax = daily.max.getOrNull(i),
+                temperatureMin = daily.min.getOrNull(i),
+                humidity = daily.humidity.getOrNull(i),
+                humidityAtMax = day.maxByOrNull { it.temperature }?.humidity,
+                humidityAtMin = day.minByOrNull { it.temperature }?.humidity,
+                precipitationProbability = daily.precipitation.getOrNull(i),
+            )
+        },
+    )
+}

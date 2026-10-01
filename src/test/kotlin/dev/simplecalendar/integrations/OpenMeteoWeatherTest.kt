@@ -37,6 +37,7 @@ class OpenMeteoWeatherTest {
             assertTrue("latitude=52.52" in query && "longitude=13.41" in query, query)
             assertTrue("timezone=Asia/Jerusalem" in query, "days must be household days: $query")
             assertTrue("forecast_days=16" in query, query)
+            assertTrue("hourly=temperature_2m,relative_humidity_2m" in query, query)
 
             with(weather.current) {
                 assertEquals("2026-09-16T23:45", time)
@@ -54,11 +55,15 @@ class OpenMeteoWeatherTest {
                 assertEquals(31.2, temperatureMax)
                 assertEquals(22.5, temperatureMin)
                 assertEquals(64, humidity)
+                // 14:00 is the warmest hour and 05:00 the coolest; each brings its own humidity.
+                assertEquals(49, humidityAtMax)
+                assertEquals(79, humidityAtMin)
                 assertEquals(0, precipitationProbability)
             }
             assertEquals(listOf("sunny", "pouring", "hail"), weather.days.take(3).map { it.condition })
             assertNull(weather.days.last().precipitationProbability, "Open-Meteo sends null far ahead")
             assertNull(weather.days.last().humidity)
+            assertNull(weather.days.last().humidityAtMax)
         }
     }
 

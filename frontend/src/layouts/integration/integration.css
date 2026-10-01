@@ -135,6 +135,71 @@
   color: var(--text-muted);
 }
 
+/* --- Climate window ---------------------------------------------------------------------- */
+
+/* Square like the refresh and the plus, beside the strip whose rooms it opens. */
+.layout-integration .nav-button.climate {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+/*
+ * A fixed height rather than one that follows the content: each column scrolls on its own, and
+ * that needs a box whose height is known before the columns are laid out. The same box whether
+ * the house has three rooms or twelve is no loss either.
+ */
+.layout-integration .climate-dialog {
+  width: min(960px, 100%);
+  height: min(720px, 100%);
+}
+
+.layout-integration .climate-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* Read standing at the tablet, but by somebody who may have stepped back: larger than the strip. */
+.layout-integration .climate-column {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 24px 24px;
+  font-size: 22px;
+  line-height: 1.5;
+}
+
+.layout-integration .climate-column + .climate-column {
+  border-left: 1px solid var(--border);
+}
+
+.layout-integration .climate-line {
+  margin: 0;
+}
+
+.layout-integration .climate-name {
+  color: var(--text-muted);
+}
+
+/* A long room name may wrap; its numbers do not break in two. */
+.layout-integration .climate-value {
+  white-space: nowrap;
+}
+
+.layout-integration .climate-heading {
+  margin: 18px 0 2px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 /* --- Calendar legend -------------------------------------------------------------------- */
 
 .layout-integration .legend {
@@ -313,5 +378,29 @@
   .layout-integration .nav-group,
   .layout-integration .view-group {
     flex-wrap: wrap;
+  }
+}
+
+/* Two columns of this size stop fitting a line: one above the other, still each scrolling. */
+@media (max-width: 640px) {
+  .layout-integration .climate-dialog {
+    height: 100%;
+  }
+
+  .layout-integration .climate-body {
+    grid-auto-flow: row;
+    grid-auto-rows: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .layout-integration .climate-column {
+    padding: 12px 16px 16px;
+    font-size: 18px;
+  }
+
+  .layout-integration .climate-column + .climate-column {
+    border-left: none;
+    border-top: 1px solid var(--border);
   }
 }

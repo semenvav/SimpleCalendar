@@ -1,7 +1,8 @@
 package dev.simplecalendar.integrations
 
+import dev.simplecalendar.config.Env
 import dev.simplecalendar.integrations.homeassistant.HomeAssistantIntegration
-import dev.simplecalendar.integrations.homeassistant.SensorPair
+import dev.simplecalendar.integrations.homeassistant.SensorPlace
 import dev.simplecalendar.plugins.UpstreamException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -33,6 +34,14 @@ class HomeAssistantIntegrationTest {
                             call.respondText(fixture("ha-state-temperature.json"), ContentType.Application.Json)
                         "sensor.living_room_humidity" ->
                             call.respondText(fixture("ha-state-humidity.json"), ContentType.Application.Json)
+                        "sensor.living_room_pressure" ->
+                            call.respondText(fixture("ha-state-pressure.json"), ContentType.Application.Json)
+                        "sensor.hall_pressure" ->
+                            call.respondText(state("sensor.hall_pressure", "756", "mmHg"), ContentType.Application.Json)
+                        "sensor.balcony_pressure" ->
+                            call.respondText(state("sensor.balcony_pressure", "unavailable", "hPa"), ContentType.Application.Json)
+                        "sensor.attic_pressure" ->
+                            call.respondText(state("sensor.attic_pressure", "1", "atm"), ContentType.Application.Json)
                         "person.mama" ->
                             call.respondText(fixture("ha-state-person.json"), ContentType.Application.Json)
                         else -> call.respondText(
@@ -45,6 +54,10 @@ class HomeAssistantIntegrationTest {
             },
             block = block,
         )
+
+    /** A state with nothing but its unit, for the cases no fixture covers. */
+    private fun state(entityId: String, state: String, unit: String) =
+        """{"entity_id":"$entityId","state":"$state","attributes":{"unit_of_measurement":"$unit"},"last_changed":null}"""
 
     @Test
     fun `reads the chosen entities in the order they were listed`() = withHomeAssistant { baseUrl, context ->
@@ -70,13 +83,13 @@ class HomeAssistantIntegrationTest {
     }
 
     @Test
-    fun `a sensor pair becomes one line with both numbers`() = withHomeAssistant { baseUrl, context ->
+    fun `a place becomes one line with its numbers`() = withHomeAssistant { baseUrl, context ->
         val states = HomeAssistantIntegration(
             context.http, baseUrl, token,
             entityIds = emptyList(),
             sensors = listOf(
-                SensorPair("Гостиная", "sensor.living_room_temperature", "sensor.living_room_humidity"),
-                SensorPair("Улица", "sensor.gone", "sensor.also_gone"),
+                SensorPlace("Гостиная", "sensor.living_room_temperature", "sensor.living_room_humidity"),
+                SensorPlace("Улица", "sensor.gone", "sensor.also_gone"),
             ),
         ).fetch()
 
@@ -89,8 +102,58 @@ class HomeAssistantIntegrationTest {
         }
         // A place whose sensors have gone keeps its line, empty: an absent line is easy to miss.
         assertEquals(listOf(null, null), listOf(states.sensors[1].temperature, states.sensors[1].humidity))
-        assertEquals(emptyList(), states.entities, "pairs are not listed twice as plain entities")
+        assertEquals(emptyList(), states.entities, "places are not listed twice as plain entities")
     }
+
+    @Test
+    fun `the climate window has places of its own, and the pressure is their mean in hPa`() =
+        withHomeAssistant { baseUrl, context ->
+            val states = HomeAssistantIntegration(
+                context.http, baseUrl, token,
+                entityIds = emptyList(),
+                sensors = listOf(SensorPlace("Гостиная", "sensor.living_room_temperature")),
+                climate = listOf(
+                    SensorPlace(
+                        "Гостиная",
+                        "sensor.living_room_temperature", "sensor.living_room_humidity", "sensor.living_room_pressure",
+                    ),
+                    SensorPlace("Коридор", "sensor.gone", "sensor.also_gone", "sensor.hall_pressure"),
+                    SensorPlace("Балкон", "sensor.gone", null, "sensor.balcony_pressure"),
+                    SensorPlace("Чердак", "sensor.gone", null, "sensor.attic_pressure"),
+                ),
+            ).fetch()
+
+            assertEquals(listOf("Гостиная"), states.sensors.map { it.name }, "the strip keeps to its own list")
+            assertEquals(listOf("Гостиная", "Коридор", "Балкон", "Чердак"), states.climate.map { it.name })
+            with(states.climate[0]) {
+                assertEquals(23.4, temperature)
+                assertEquals(47.0, humidity)
+                assertEquals(1008.3, pressure)
+                assertEquals("hPa", pressureUnit)
+            }
+
+            // 756 mmHg is 1007.92 hPa. The sensor that went quiet and the unit Home Assistant does
+            // not offer stay out of the mean rather than drag it to nonsense.
+            assertEquals(1008.11, assertNotNull(states.pressure), 0.01)
+        }
+
+    @Test
+    fun `without a list of its own the climate window shows the strip's places`() =
+        withHomeAssistant { baseUrl, context ->
+            val env = Env.of(
+                mapOf(
+                    "SC_HA_URL" to baseUrl,
+                    "SC_HA_TOKEN" to token,
+                    "SC_HA_SENSORS" to "Гостиная=sensor.living_room_temperature+sensor.living_room_humidity",
+                ),
+            )
+            val states = assertNotNull(HomeAssistantIntegration.fromEnv(IntegrationContext(env, context.http, context.zone)))
+                .fetch()
+
+            assertEquals(listOf("Гостиная"), states.climate.map { it.name })
+            assertEquals(states.sensors, states.climate)
+            assertNull(states.pressure, "nobody named a pressure sensor")
+        }
 
     @Test
     fun `a rejected token fails the whole fetch`() = withHomeAssistant { baseUrl, context ->
@@ -124,6 +187,17 @@ class HomeAssistantIntegrationTest {
             ),
         )
 
+        // So is the window's list alone.
+        assertNotNull(
+            HomeAssistantIntegration.fromEnv(
+                contextWith(
+                    "SC_HA_URL" to "http://ha:8123",
+                    "SC_HA_TOKEN" to token,
+                    "SC_HA_CLIMATE" to "Спальня=sensor.bed_t+sensor.bed_h+sensor.bed_p",
+                ),
+            ),
+        )
+
         assertFailsWith<IllegalStateException>("the token is required") {
             HomeAssistantIntegration.fromEnv(contextWith("SC_HA_URL" to "http://ha:8123", "SC_HA_ENTITIES" to "person.mama"))
         }
@@ -138,26 +212,25 @@ class HomeAssistantIntegrationTest {
     }
 
     @Test
-    fun `SC_HA_SENSORS is read as name equals temperature plus humidity`() {
-        val parsed = HomeAssistantIntegration.parseSensors(
-            " Спальня = sensor.bed_t + sensor.bed_h , Улица=sensor.out_t ",
-        )
+    fun `places are read as name equals temperature plus humidity plus pressure`() {
+        fun parse(raw: String?) = HomeAssistantIntegration.parseSensors("SC_HA_CLIMATE", raw)
+
         assertEquals(
             listOf(
-                SensorPair("Спальня", "sensor.bed_t", "sensor.bed_h"),
-                SensorPair("Улица", "sensor.out_t", null),
+                SensorPlace("Спальня", "sensor.bed_t", "sensor.bed_h", "sensor.bed_p"),
+                SensorPlace("Кухня", "sensor.kitchen_t", "sensor.kitchen_h"),
+                SensorPlace("Улица", "sensor.out_t"),
             ),
-            parsed,
-            "spaces are noise, and the humidity half is optional",
+            parse(" Спальня = sensor.bed_t + sensor.bed_h + sensor.bed_p , Кухня=sensor.kitchen_t+sensor.kitchen_h, Улица=sensor.out_t "),
+            "spaces are noise, and humidity and pressure are optional",
         )
-        assertEquals(emptyList(), HomeAssistantIntegration.parseSensors(null))
+        assertEquals(emptyList(), parse(null))
 
-        assertFailsWith<IllegalArgumentException>("no name") { HomeAssistantIntegration.parseSensors("sensor.bed_t") }
-        assertFailsWith<IllegalArgumentException>("three entities") {
-            HomeAssistantIntegration.parseSensors("Спальня=sensor.a+sensor.b+sensor.c")
+        assertFailsWith<IllegalArgumentException>("no name") { parse("sensor.bed_t") }
+        val tooMany = assertFailsWith<IllegalArgumentException>("four entities") {
+            parse("Спальня=sensor.a+sensor.b+sensor.c+sensor.d")
         }
-        assertFailsWith<IllegalArgumentException>("an id that would escape the path") {
-            HomeAssistantIntegration.parseSensors("Спальня=../config")
-        }
+        assertTrue("SC_HA_CLIMATE" in tooMany.message.orEmpty(), "the error names the variable to fix: ${tooMany.message}")
+        assertFailsWith<IllegalArgumentException>("an id that would escape the path") { parse("Спальня=../config") }
     }
 }

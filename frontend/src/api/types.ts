@@ -70,27 +70,34 @@ export interface HealthDto {
 //
 // Only the parts a layout actually shows. Each integration sends more (see
 // `src/main/kotlin/dev/simplecalendar/integrations/`); adding a field here is enough to use it.
+//
+// A value the service did not have is left out of the JSON rather than sent as null, so every
+// such field is optional here: test it with `== null`, which catches both.
 
 /** Whatever provider is configured, the shape is the same — see `weather/Weather.kt`. */
 export interface WeatherNow {
   /** Household wall-clock time the reading is for, `2026-09-16T11:45`. */
   time: string
-  condition: string | null
-  temperature: number | null
-  feelsLike: number | null
-  humidity: number | null
-  windSpeed: number | null
+  condition?: string | null
+  temperature?: number | null
+  feelsLike?: number | null
+  humidity?: number | null
+  windSpeed?: number | null
 }
 
 export interface WeatherDay {
   /** `YYYY-MM-DD`, a day in the household zone. */
   date: string
-  condition: string | null
-  temperatureMax: number | null
-  temperatureMin: number | null
+  condition?: string | null
+  temperatureMax?: number | null
+  temperatureMin?: number | null
   /** Mean relative humidity over the day, 0–100. */
-  humidity: number | null
-  precipitationProbability: number | null
+  humidity?: number | null
+  /** Relative humidity at the warmest hour of the day — the moment `temperatureMax` describes. */
+  humidityAtMax?: number | null
+  /** The same at the coolest hour. */
+  humidityAtMin?: number | null
+  precipitationProbability?: number | null
 }
 
 export interface Weather {
@@ -99,15 +106,23 @@ export interface Weather {
   days: WeatherDay[]
 }
 
-/** One place in the house and its two numbers, as `SC_HA_SENSORS` pairs them up. */
+/** One place in the house and its numbers, as `SC_HA_SENSORS` and `SC_HA_CLIMATE` name them. */
 export interface SensorReading {
   name: string
-  temperature: number | null
-  temperatureUnit: string | null
-  humidity: number | null
-  humidityUnit: string | null
+  temperature?: number | null
+  humidity?: number | null
+  /**
+   * Set while Home Assistant knows the place's humidity entity, even when it reads nothing: that
+   * is what tells a sensor that has gone quiet from a place that has no humidity sensor at all.
+   */
+  humidityUnit?: string | null
 }
 
 export interface HomeAssistantStates {
+  /** The strip in the toolbar. */
   sensors: SensorReading[]
+  /** The climate window: every place in the house. */
+  climate: SensorReading[]
+  /** hPa, the mean over every place in `climate` whose pressure reads. */
+  pressure?: number | null
 }

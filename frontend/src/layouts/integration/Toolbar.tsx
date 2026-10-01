@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import type { CalendarApp } from '../../app/useCalendarApp'
 import type { ViewId } from '../../views'
 import { LayoutPicker } from '../LayoutPicker'
+import { ClimateButton } from './Climate'
 import { SensorStrip } from './SensorStrip'
 import { WeatherStrip } from './WeatherStrip'
 
@@ -44,10 +45,12 @@ export function Toolbar({ app, views }: ToolbarProps) {
         {/*
           No heading: the calendar names its own period. The spacer is what keeps the readings
           against the edges of the middle whichever of them is configured — with one strip alone,
-          `space-between` would simply put it on the left.
+          `space-between` would simply put it on the left. The climate button rides with the
+          sensors: it opens the rest of them.
         */}
         <div className="toolbar-middle">
           <SensorStrip />
+          <ClimateButton />
           <span className="toolbar-gap" />
           <WeatherStrip />
         </div>

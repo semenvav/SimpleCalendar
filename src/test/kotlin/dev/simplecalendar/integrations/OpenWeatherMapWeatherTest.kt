@@ -53,6 +53,8 @@ class OpenWeatherMapWeatherTest {
                 assertEquals(29.7, temperatureMax)
                 assertEquals(19.6, temperatureMin)
                 assertEquals(73, humidity, "the mean over the day, not the reading at any one hour")
+                assertEquals(58, humidityAtMax, "the noon slot's, where the 29.7 comes from")
+                assertEquals(88, humidityAtMin, "the six o'clock slot's, where the 19.6 comes from")
                 assertEquals(35, precipitationProbability, "the likeliest three hours of the day")
                 assertEquals("partlycloudy", condition, "midday decides, not the rain before dawn")
             }
@@ -60,6 +62,8 @@ class OpenWeatherMapWeatherTest {
                 assertEquals(31.4, temperatureMax)
                 assertEquals(21.6, temperatureMin)
                 assertEquals(62, humidity)
+                assertEquals(52, humidityAtMax)
+                assertEquals(77, humidityAtMin)
                 assertEquals(60, precipitationProbability)
                 assertEquals("lightning-rainy", condition)
             }

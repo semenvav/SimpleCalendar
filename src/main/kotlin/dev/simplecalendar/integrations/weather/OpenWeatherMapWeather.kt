@@ -162,13 +162,23 @@ private fun List<Slot>.toDay(date: LocalDate, zone: ZoneId): DayWeather {
         abs(Duration.between(LocalDateTime.of(date, LocalTime.NOON), at).toMinutes())
     }
     val humidity = mapNotNull { it.main?.humidity }
+    // The slots the day's extremes come from, so that each brings its own humidity along.
+    val readings = mapNotNull { it.main }
+    val warmest = readings.maxByOrNull { it.high ?: Double.NEGATIVE_INFINITY }?.takeIf { it.high != null }
+    val coolest = readings.minByOrNull { it.low ?: Double.POSITIVE_INFINITY }?.takeIf { it.low != null }
 
     return DayWeather(
         date = date.toString(),
         condition = owmCondition(midday?.weather?.firstOrNull()?.id, isDay = true),
-        temperatureMax = mapNotNull { it.main?.tempMax ?: it.main?.temp }.maxOrNull(),
-        temperatureMin = mapNotNull { it.main?.tempMin ?: it.main?.temp }.minOrNull(),
+        temperatureMax = warmest?.high,
+        temperatureMin = coolest?.low,
         humidity = humidity.takeIf { it.isNotEmpty() }?.average()?.roundToInt(),
+        humidityAtMax = warmest?.humidity,
+        humidityAtMin = coolest?.humidity,
         precipitationProbability = mapNotNull { it.pop }.maxOrNull()?.let { (it * 100).roundToInt() },
     )
 }
+
+/** The three hours' range: OpenWeatherMap's own bounds where it gives them, the reading otherwise. */
+private val Readings.high: Double? get() = tempMax ?: temp
+private val Readings.low: Double? get() = tempMin ?: temp

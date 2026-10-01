@@ -39,6 +39,14 @@ data class DayWeather(
     val temperatureMin: Double?,
     /** Mean relative humidity over the day, 0–100. */
     val humidity: Int? = null,
+    /**
+     * Relative humidity at the warmest hour of the day, 0–100 — so that «31° 45%» on the wall is
+     * one moment. The day's highest humidity comes at dawn, and next to its highest temperature it
+     * would describe an afternoon that never happens.
+     */
+    val humidityAtMax: Int? = null,
+    /** The same at the coolest hour. */
+    val humidityAtMin: Int? = null,
     /** The highest chance of precipitation in any hour of the day, 0–100. */
     val precipitationProbability: Int?,
 )
