@@ -8,8 +8,8 @@ import kotlinx.serialization.Serializable
  * The weather as the wall shows it, whoever the forecast came from.
  *
  * Provider codes and units stop at the integration: everything here is °C, %, km/h, household
- * days, and conditions named in Home Assistant's vocabulary. That is what lets the same strip on
- * the wall be fed by Open-Meteo or by OpenWeatherMap without the frontend knowing which.
+ * days, and conditions named in Home Assistant's vocabulary. That is what lets the same climate
+ * window on the wall be fed by Open-Meteo or by OpenWeatherMap without the frontend knowing which.
  */
 @Serializable
 data class Weather(

@@ -26,11 +26,8 @@ function ThermometerIcon() {
 }
 
 /**
- * The button beside the sensor strip, and the window it opens.
- *
- * The strip stays what it was — a glance from across the kitchen, as many rooms as fit in the
- * height of a button. Everything else is one tap away: every room in the house, and the day's
- * extremes outdoors.
+ * The thermometer among the toolbar's buttons, and the window it opens: every room in the house,
+ * the weather now and the day's extremes outdoors. The wall itself shows only the calendar.
  *
  * Shows nothing until there is something to open: Home Assistant or the weather has to have
  * answered at least once.
@@ -75,8 +72,8 @@ function ClimateDialog({ states, weather, onClose }: ClimateDialogProps) {
   const backdrop = useBackdropDismiss(onClose)
   const places = states?.climate ?? []
 
-  // By date rather than by position, as in the strip: a provider whose forecast starts at the
-  // next three-hour slot may have nothing for the rest of today.
+  // By date rather than as `days[0]` and `days[1]`: a provider whose forecast starts at the next
+  // three-hour slot may have nothing for the rest of today.
   const today = weather?.days.find((day) => day.date === toIsoDate(new Date()))
   const tomorrow = weather?.days.find((day) => day.date === toIsoDate(addDays(new Date(), 1)))
 

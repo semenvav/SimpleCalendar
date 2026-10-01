@@ -119,8 +119,6 @@ export interface SensorReading {
 }
 
 export interface HomeAssistantStates {
-  /** The strip in the toolbar. */
-  sensors: SensorReading[]
   /** The climate window: every place in the house. */
   climate: SensorReading[]
   /** hPa, the mean over every place in `climate` whose pressure reads. */

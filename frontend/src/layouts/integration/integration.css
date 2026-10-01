@@ -1,6 +1,6 @@
 /*
- * The layout with the house in its toolbar: sensors, the period, the weather across the top, and
- * the hand-made marks on the entries below.
+ * The layout with the house a tap away: the climate window behind the thermometer in the toolbar,
+ * and the hand-made marks on the entries below.
  *
  * Every rule is scoped to .layout-integration, so nothing here can reach «Классика» and nothing
  * there can reach this. Shared pieces — the event card, the form, buttons, the colour tokens —
@@ -25,31 +25,18 @@
 }
 
 /*
- * Three columns, the middle one taking whatever is left. The navigation and the views keep their
- * natural width at the edges, so the title stays put as the months change under it instead of
- * sliding about with the length of their names.
+ * The navigation and the buttons against the edges, nothing between: what the period is, the
+ * calendar says itself.
  *
  * Two rows in all — this one and the calendars below — exactly as in «Классика», and every child
  * of this row is at most a button tall. That is what makes both toolbars the same height, so the
  * months sit in the same place whichever layout the wall is showing.
  */
 .layout-integration .toolbar-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-}
-
-/* Sensors on one side, weather on the other; what the period is, the calendar says itself. */
-.layout-integration .toolbar-middle {
   display: flex;
   align-items: center;
-  gap: 24px;
-  min-width: 0;
-}
-
-.layout-integration .toolbar-gap {
-  flex: 1;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .layout-integration .nav-group,
@@ -107,37 +94,9 @@
   animation: spin 900ms linear infinite;
 }
 
-/* --- Sensor and weather strips ----------------------------------------------------------- */
-
-/*
- * A line per reading, stacked. No card, no border: they are part of the same glance as the
- * month's name, and a box around them would make them look like something to act on.
- */
-.layout-integration .strip {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 auto;
-  min-width: 0;
-  /* Two lines at this size come to ~42px — inside the 48px of a button, which is what keeps the
-     toolbar the same height as the classic one. Do not enlarge without checking that. */
-  font-size: 17px;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.layout-integration .strip-line {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.layout-integration .strip-name {
-  color: var(--text-muted);
-}
-
 /* --- Climate window ---------------------------------------------------------------------- */
 
-/* Square like the refresh and the plus, beside the strip whose rooms it opens. */
+/* Square like the refresh and the plus beside it. */
 .layout-integration .nav-button.climate {
   flex: 0 0 auto;
   display: inline-flex;
@@ -166,7 +125,7 @@
   grid-template-rows: minmax(0, 1fr);
 }
 
-/* Read standing at the tablet, but by somebody who may have stepped back: larger than the strip. */
+/* Read standing at the tablet, but by somebody who may have stepped back. */
 .layout-integration .climate-column {
   min-height: 0;
   overflow-y: auto;
@@ -344,22 +303,6 @@
   min-height: 0;
 }
 
-/*
- * Too narrow for one row: the strips go under the title rather than beside it. Below this width
- * the toolbar is taller than the classic one — unavoidable, and no wall is this narrow.
- */
-@media (max-width: 1100px) {
-  .layout-integration .toolbar-middle {
-    flex-wrap: wrap;
-    gap: 4px 20px;
-  }
-
-  /* Wrapped, the readings sit one under the other and the spacer has nothing left to push. */
-  .layout-integration .toolbar-gap {
-    display: none;
-  }
-}
-
 /* One column below the width where two months stop being readable. */
 @media (max-width: 900px) {
   .layout-integration .two-months {
@@ -368,7 +311,7 @@
   }
 
   .layout-integration .toolbar-row {
-    grid-template-columns: 1fr;
+    flex-wrap: wrap;
   }
 
   /*
